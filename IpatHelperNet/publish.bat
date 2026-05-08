@@ -72,11 +72,34 @@ if "!API_KEY!"=="" (
 )
 echo [INFO] APIキーを読み込みました。
 
+rem ---- 一個上の階層から README.md を一時コピー --------------
+set README_SRC=..\README.md
+set README_DST=.\README.md
+set README_COPIED=0
+
+if not exist "%README_SRC%" (
+    echo [ERROR] README.md が見つかりませんでした: %README_SRC%
+    pause
+    exit /b 1
+)
+
+copy /y "%README_SRC%" "%README_DST%" >nul
+set README_COPIED=1
+echo [INFO] README.md を一時コピーしました。
+
 rem ---- dotnet pack -------------------------------------------
 echo.
 echo [INFO] パッケージをビルドしています...
 dotnet pack -c Release -o ./nupkg
-if %ERRORLEVEL% neq 0 (
+set PACK_RESULT=%ERRORLEVEL%
+
+rem ---- README.md の一時コピーを削除 --------------------------
+if "%README_COPIED%"=="1" (
+    del /f /q "%README_DST%" >nul
+    echo [INFO] README.md の一時コピーを削除しました。
+)
+
+if %PACK_RESULT% neq 0 (
     echo [ERROR] dotnet pack に失敗しました。
     pause
     exit /b 1
