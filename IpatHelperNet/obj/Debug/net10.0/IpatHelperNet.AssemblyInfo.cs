@@ -15,7 +15,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyDescriptionAttribute("C# wrapper for IpatHelper native DLL (JRA I-PAT automation)")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.3.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.3+c5fe5e8102326f36375b54a534e255fb8811282b")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.3+e134cd543f4d6eebef33a426a740ffcac88a184d")]
 [assembly: System.Reflection.AssemblyProductAttribute("IpatHelperNet")]
 [assembly: System.Reflection.AssemblyTitleAttribute("IpatHelperNet")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.3.0")]
