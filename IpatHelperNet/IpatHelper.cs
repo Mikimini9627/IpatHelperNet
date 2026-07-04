@@ -91,8 +91,8 @@ namespace IpatHelperNet
         [StructLayout(LayoutKind.Sequential)]
         public struct ST_BET_DATA_WIN5
         {
-            public byte youbi;
             public uint kingaku;
+            public byte youbi;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)]
             public uint[] horseNo;
         };
@@ -250,7 +250,7 @@ namespace IpatHelperNet
             internal static extern uint BetWin5(ST_BET_DATA_WIN5 objBetData, ushort usWaitMiliSeconds);
 
             [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
-            internal static extern uint SetAutoDepositFlag([MarshalAs(UnmanagedType.Bool)] bool bEnable, uint unDepositValue, ushort usConfrimTimeout);
+            internal static extern uint SetAutoDepositFlag([MarshalAs(UnmanagedType.I1)] bool bEnable, uint unDepositValue, ushort usConfrimTimeout);
         }
         #endregion
 
@@ -267,10 +267,10 @@ namespace IpatHelperNet
         {
             Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
-            return NativeMethods.Login(Encoding.UTF8.GetBytes(iNetId),
-                                       Encoding.UTF8.GetBytes(id),
-                                       Encoding.UTF8.GetBytes(password),
-                                       Encoding.UTF8.GetBytes(pars));
+            return NativeMethods.Login(Encoding.UTF8.GetBytes(iNetId + "\0"),
+                                       Encoding.UTF8.GetBytes(id + "\0"),
+                                       Encoding.UTF8.GetBytes(password + "\0"),
+                                       Encoding.UTF8.GetBytes(pars + "\0"));
         }
 
         /// <summary>
