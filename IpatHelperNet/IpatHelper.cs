@@ -145,8 +145,8 @@ namespace IpatHelperNet
             WIN = 1,
             PLACE,
             BRACKETQUINELLA,
-            QUINELLAPLACE,
             QUINELLA,
+            QUINELLAPLACE,
             EXACTA,
             TRIO,
             TRIFECTA
