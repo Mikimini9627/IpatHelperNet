@@ -3,16 +3,16 @@
     <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
     <AssemblyName>IpatHelperNet</AssemblyName>
     <RootNamespace>IpatHelperNet</RootNamespace>
-    <Version>1.0.18</Version>
+    <Version>1.0.20</Version>
     <PackageId>IpatHelperNet</PackageId>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <Authors>Mikimini9627</Authors>
     <Description>C# wrapper for IpatHelper native DLL (JRA I-PAT automation)</Description>
-    <!-- ネイティブDLL配置の自動コピーを有効化 -->
+    <!-- ・ｽl・ｽC・ｽe・ｽB・ｽuDLL・ｽz・ｽu・ｽﾌ趣ｿｽ・ｽ・ｽ・ｽR・ｽs・ｽ[・ｽ・ｽL・ｽ・ｽ・ｽ・ｽ -->
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
   </PropertyGroup>
 
-  <!-- ネイティブDLLをNuGetパッケージの runtimes フォルダに格納 -->
+  <!-- ・ｽl・ｽC・ｽe・ｽB・ｽuDLL・ｽ・ｽNuGet・ｽp・ｽb・ｽP・ｽ[・ｽW・ｽ・ｽ runtimes ・ｽt・ｽH・ｽ・ｽ・ｽ_・ｽﾉ格・ｽ[ -->
   <ItemGroup>
     <!-- x64 Release DLL -->
     <None Include="runtimes\win-x64\native\IpatHelper.dll">

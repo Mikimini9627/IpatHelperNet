@@ -304,6 +304,48 @@ if (ret.HasFlag(RETURN_VALUE.SUCCESS))
 
 ---
 
+### GetOdds — オッズ取得
+
+指定レース・式別のオッズを取得します（**中央競馬のみ**対応）。単勝・複勝は基本オッズ、枠連〜三連単は全通りのオッズ表を取得します。
+
+```csharp
+uint GetOdds(Kaisai place, byte raceNo, Shikibetsu shikibetsu, out ST_ODDS_DATA oddsData)
+```
+
+- ネイティブ側で確保されたメモリはラッパー内部で解放するため、呼び出し側での解放は不要です。
+- オッズは 10 倍の整数（`odds`）で格納されます（例: 12.3 倍 → `123`）。実際の倍率は `odds / 10.0`。
+- 複勝・ワイドは下限を `odds`、上限を `oddsHigh` に格納します。
+- `status` が `1`（発売中止）／`2`（オッズ未取得）の場合、`odds` / `oddsHigh` は `0` です。
+
+```csharp
+var ret = IpatHelper.GetOdds(IpatHelper.Kaisai.TOKYO, 11, IpatHelper.Shikibetsu.QUINELLA, out var odds);
+if ((ret & 1) == 1)
+{
+    Console.WriteLine($"オッズ更新時刻: {odds.oddsTime} / 明細数: {odds.detailCount}");
+    foreach (var d in odds.oddsDetail)
+    {
+        string kaime = d.horse1.ToString();
+        if (d.horse2 != 0) kaime += "-" + d.horse2;
+        if (d.horse3 != 0) kaime += "-" + d.horse3;
+        Console.WriteLine($"{kaime} : {(d.odds / 10.0):0.0}");
+    }
+}
+```
+
+`ST_ODDS_DATA` / `ST_ODDS_DETAIL` の各フィールド:
+
+| 構造体 | フィールド | 内容 |
+|---|---|---|
+| `ST_ODDS_DATA` | `place` / `raceNo` | 開催場 / レース番号 |
+| | `oddsTime` | オッズ更新時刻 "HH:MM" |
+| | `detailCount` / `oddsDetail` | 明細数 / 明細配列 |
+| `ST_ODDS_DETAIL` | `type` | 式別（Shikibetsu） |
+| | `horse1` / `horse2` / `horse3` | 馬番/枠番（単複は1頭、馬連・ワイド・馬単・枠連は2頭、三連系は3頭） |
+| | `status` | 0:通常 1:発売中止 2:オッズ未取得 |
+| | `odds` / `oddsHigh` | オッズ×10（複勝・ワイドは下限/上限） |
+
+---
+
 ## 買い目文字列の書式
 
 `GetBetInstance` および `GetBetInstanceWin5` に渡す買い目文字列のフォーマットです。
@@ -352,8 +394,8 @@ if (ret.HasFlag(RETURN_VALUE.SUCCESS))
 | `WIN` | 単勝 |
 | `PLACE` | 複勝 |
 | `BRACKETQUINELLA` | 枠連 |
-| `QUINELLAPLACE` | ワイド |
 | `QUINELLA` | 馬連 |
+| `QUINELLAPLACE` | ワイド |
 | `EXACTA` | 馬単 |
 | `TRIO` | 三連複 |
 | `TRIFECTA` | 三連単 |
