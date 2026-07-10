@@ -211,6 +211,64 @@ namespace IpatHelperNet
             public uint entryCount;         // 出走馬数
             public ST_ENTRY_DETAIL[] entries; // 出走馬明細
         };
+
+        /// <summary>
+        /// お知らせ一覧の1件分(マーシャリング用)
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ST_NOTICE_ITEM_INTERNAL
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 512)]
+            public byte[] szTitle;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 64)]
+            public byte[] szDate;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 1024)]
+            public byte[] szUrl;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public byte[] szIcon;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] szColor;
+        }
+
+        /// <summary>
+        /// お知らせ情報(マーシャリング用 / 一覧配列はIntPtrで受ける)
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ST_NOTICE_DATA_INTERNAL
+        {
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 2048)]
+            public byte[] szMessage;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
+            public byte[] szNoticeNo;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+            public byte[] szNoticeType;
+            public uint unItemCount;
+            public IntPtr pobjItem;
+        }
+
+        /// <summary>
+        /// お知らせ一覧の1件分(利用者向け / 文字列はUTF-8をデコード済み)
+        /// </summary>
+        public struct ST_NOTICE_ITEM
+        {
+            public string title;    // タイトル
+            public string date;     // 日付テキスト
+            public string url;      // リンクURL
+            public string icon;     // アイコンファイル名
+            public string color;    // 日付表示色
+        };
+
+        /// <summary>
+        /// お知らせ情報(利用者向け)
+        /// </summary>
+        public struct ST_NOTICE_DATA
+        {
+            public string message;          // 強制表示お知らせ本文。無い場合は空文字
+            public string noticeNo;         // お知らせ番号
+            public string noticeType;       // お知らせ種別
+            public uint itemCount;          // お知らせ一覧の件数
+            public ST_NOTICE_ITEM[] items;  // お知らせ一覧
+        };
         #endregion
 
         #region 列挙体
@@ -378,6 +436,12 @@ namespace IpatHelperNet
 
             [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
             internal static extern void ReleaseRaceCardData(ref ST_RACECARD_DATA_INTERNAL objRaceCardData);
+
+            [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern uint GetNotice(ref ST_NOTICE_DATA_INTERNAL objNoticeData);
+
+            [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void ReleaseNoticeData(ref ST_NOTICE_DATA_INTERNAL objNoticeData);
         }
         #endregion
 
@@ -746,6 +810,64 @@ namespace IpatHelperNet
 
             // データの複製が終わったら、取得と同時にネイティブ側のメモリを解放する
             NativeMethods.ReleaseRaceCardData(ref tempRaceCardData);
+
+            return returnValue;
+        }
+
+        /// <summary>
+        /// お知らせ取得処理実行
+        /// </summary>
+        /// <param name="notice">お知らせ情報(強制表示本文＋お知らせ一覧)</param>
+        /// <returns></returns>
+        public static uint GetNotice(out ST_NOTICE_DATA notice)
+        {
+            ST_NOTICE_DATA_INTERNAL tempNoticeData = new()
+            {
+                szMessage = new byte[2048],
+                szNoticeNo = new byte[16],
+                szNoticeType = new byte[8],
+                unItemCount = 0,
+                pobjItem = IntPtr.Zero
+            };
+
+            uint returnValue = NativeMethods.GetNotice(ref tempNoticeData);
+
+            notice = new ST_NOTICE_DATA()
+            {
+                message = DecodeUtf8(tempNoticeData.szMessage),
+                noticeNo = DecodeUtf8(tempNoticeData.szNoticeNo),
+                noticeType = DecodeUtf8(tempNoticeData.szNoticeType),
+                itemCount = tempNoticeData.unItemCount,
+                items = Array.Empty<ST_NOTICE_ITEM>()
+            };
+
+            // 取得失敗、または一覧が無い場合はここで解放して戻る
+            if ((returnValue & 1) != 1 || tempNoticeData.unItemCount <= 0 || tempNoticeData.pobjItem == IntPtr.Zero)
+            {
+                NativeMethods.ReleaseNoticeData(ref tempNoticeData);
+                return returnValue;
+            }
+
+            // ネイティブ側で確保された一覧配列をマネージド配列へ複製する
+            notice.items = new ST_NOTICE_ITEM[tempNoticeData.unItemCount];
+            int itemSize = Marshal.SizeOf(typeof(ST_NOTICE_ITEM_INTERNAL));
+            for (int i = 0; i < tempNoticeData.unItemCount; i++)
+            {
+                IntPtr elementPtr = IntPtr.Add(tempNoticeData.pobjItem, i * itemSize);
+                ST_NOTICE_ITEM_INTERNAL it = Marshal.PtrToStructure<ST_NOTICE_ITEM_INTERNAL>(elementPtr);
+
+                notice.items[i] = new ST_NOTICE_ITEM()
+                {
+                    title = DecodeUtf8(it.szTitle),
+                    date = DecodeUtf8(it.szDate),
+                    url = DecodeUtf8(it.szUrl),
+                    icon = DecodeUtf8(it.szIcon),
+                    color = DecodeUtf8(it.szColor)
+                };
+            }
+
+            // データの複製が終わったら、取得と同時にネイティブ側のメモリを解放する
+            NativeMethods.ReleaseNoticeData(ref tempNoticeData);
 
             return returnValue;
         }

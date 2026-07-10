@@ -403,6 +403,46 @@ if ((ret & 1) == 1)
 
 ---
 
+### GetNotice — お知らせ取得
+
+現在有効なお知らせを取得します（**中央競馬・地方競馬**に対応）。強制表示お知らせ本文に加え、お知らせ一覧（タイトル・日付・URL 等）を全件取得します。
+
+```csharp
+static uint GetNotice(out ST_NOTICE_DATA notice)
+```
+
+- ネイティブ側で確保されたメモリはラッパー内部で解放するため、呼び出し側での解放は不要です。
+- 文字列は UTF-8 からデコード済みの `string` として格納されます。
+- お知らせが無い場合は `message` が空文字・`itemCount` が 0 で成功します。
+
+```csharp
+uint ret = IpatHelper.GetNotice(out var notice);
+if ((ret & 1) == 1)
+{
+    if (!string.IsNullOrEmpty(notice.message))
+    {
+        Console.WriteLine($"強制表示: {notice.message}");
+    }
+    Console.WriteLine($"お知らせ {notice.itemCount} 件");
+    foreach (var item in notice.items)
+    {
+        Console.WriteLine($"[{item.date}] {item.title}  {item.url}");
+    }
+}
+```
+
+`ST_NOTICE_DATA` / `ST_NOTICE_ITEM` の各フィールド:
+
+| 構造体 | フィールド | 内容 |
+|---|---|---|
+| `ST_NOTICE_DATA` | `message` | 強制表示お知らせ本文（無い場合は空文字） |
+| | `noticeNo` / `noticeType` | お知らせ番号 / 種別 |
+| | `itemCount` / `items` | お知らせ一覧の件数 / 配列 |
+| `ST_NOTICE_ITEM` | `title` / `date` | タイトル / 日付テキスト |
+| | `url` / `icon` / `color` | リンクURL / アイコン / 日付表示色 |
+
+---
+
 ## 買い目文字列の書式
 
 `GetBetInstance` および `GetBetInstanceWin5` に渡す買い目文字列のフォーマットです。
