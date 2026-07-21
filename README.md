@@ -40,8 +40,10 @@ Install-Package IpatHelperNet
 ### .csproj に直接記述
 
 ```xml
-<PackageReference Include="IpatHelperNet" Version="1.1.0" />
+<PackageReference Include="IpatHelperNet" Version="1.1.6" />
 ```
+
+> 最新のバージョン番号は、ページ冒頭の NuGet バッジ、または [NuGet ギャラリー](https://www.nuget.org/packages/IpatHelperNet) で確認できます。
 
 > **プラットフォーム指定:** ネイティブ DLL に合わせて、プロジェクトの `Platform` を `x64` または `x86` に設定してください。
 
@@ -590,10 +592,76 @@ finally
 | 症状 | 原因 / 対処 |
 |---|---|
 | `DllNotFoundException: IpatHelper.dll` | プロジェクトの `Platform` を `x64` または `x86` に設定してください（AnyCPU は不可）。NuGet 同梱の DLL が出力フォルダに配置されているか確認します。 |
-| `EntryPointNotFoundException: GetRaceCard` 等 | 出力フォルダの `IpatHelper.dll` が旧版です。パッケージを最新（1.1.0 以降）に更新するか、`bin` を削除して再ビルドしてください。 |
+| `EntryPointNotFoundException: GetRaceCard` 等 | 出力フォルダの `IpatHelper.dll` が旧版です。パッケージを最新版に更新するか、`bin` を削除して再ビルドしてください。 |
 | ログインは成功するが購入で `FAILED_CHUOU` | 中央競馬にログインできていない可能性があります。`Login` の戻り値で `FAILED_CHUOU` を確認してください。 |
 | オッズ/出馬表が `UNSUCCESS` | 指定した開催場が当日開催されていない、または海外開催を指定しています（オッズ・出馬表は海外非対応）。 |
 | 文字化けする | 文字列は UTF-8 デコード済みで返ります。コンソール出力時は `Console.OutputEncoding = Encoding.UTF8;` を設定してください。 |
+| `GetNotice` のお知らせ本文だけ末尾が文字化けする | 旧版のネイティブ DLL に、固定長バッファへの切り詰めが UTF-8 の文字境界を無視する不具合がありました。パッケージを最新版に更新してください。 |
+
+---
+
+## 開発者向け: リリース手順
+
+### リポジトリ構成
+
+```
+IpatHelperNet/
+├── publish.bat              ... NuGet 公開スクリプト（リポジトリ直下）
+├── README.md                ... 本ファイル。パッケージの README として同梱される
+├── IpatHelperNet.slnx
+└── IpatHelperNet/
+    ├── IpatHelperNet.csproj ... <Version> を publish.bat が自動で更新する
+    ├── IpatHelper.cs        ... P/Invoke ラッパー本体
+    ├── runtimes/
+    │   ├── win-x64/native/IpatHelper.dll
+    │   └── win-x86/native/IpatHelper.dll
+    └── nupkg/               ... 生成された .nupkg（git 管理外）
+```
+
+### 事前準備
+
+ネイティブ DLL を更新する場合は、[IpatHelperNative](https://github.com/yawatamikiya/IpatHelperNative) でビルドした
+x64 / x86 の `IpatHelper.dll` を `IpatHelperNet/runtimes/` 配下の各フォルダへ配置してください。
+
+NuGet の API キーを次のファイルに `IpatHelperNet=＜APIキー＞` の形式で記述しておきます。
+
+```
+%USERPROFILE%\.nuget\packages\publish_key.ini
+```
+
+### 公開
+
+`publish.bat` を**リポジトリ直下**に置いたまま実行します（ダブルクリックでも可）。
+バッチ自身の位置を基準に動作するため、どのフォルダから起動しても構いません。
+
+```bat
+publish.bat
+```
+
+実行すると次の処理が順に行われます。
+
+1. `IpatHelperNet/IpatHelperNet.csproj` からバージョンを読み取り、**パッチ番号を +1** して書き戻す
+2. リポジトリ直下の `README.md` をプロジェクト直下へ一時コピー（`PackageReadmeFile` 用）
+3. `dotnet pack -c Release` で `IpatHelperNet/nupkg/` へパッケージを作成
+4. 一時コピーした `README.md` を削除
+5. `dotnet nuget push` で nuget.org へ公開
+
+公開せずにパッケージ作成までを確認したい場合は `/dryrun` を付けます。
+このときバージョン番号は更新されません。
+
+```bat
+publish.bat /dryrun
+```
+
+### バッチ編集時の注意
+
+- **文字コードは Shift_JIS（CP932）、改行は CRLF** を維持してください。UTF-8 や LF で保存すると
+  `cmd.exe` が日本語部分を解釈できず、構文エラーになります。
+- 冒頭でコンソールのコードページを CP932 へ切り替え、終了時に元へ戻しています。
+  これにより、UTF-8（65001）のコンソールから実行しても正しく動作します。
+- `.csproj` のバージョン書き換えは UTF-8（BOM なし）で明示的に読み書きしています。
+  `Get-Content` / `Set-Content` を素で使うと既定の文字コードで書き戻され、
+  `.csproj` 内の日本語コメントが実行のたびに少しずつ壊れます。
 
 ---
 
