@@ -86,6 +86,8 @@ namespace IpatHelperNet
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
             public uint[] horseNo;
             public uint totalAmount;
+            /// <summary>マルチかどうか(0:通常 1:マルチ)。GetBetInstance がマルチ指定時に設定。</summary>
+            public byte multi;
         };
 
         [StructLayout(LayoutKind.Sequential)]
@@ -303,14 +305,31 @@ namespace IpatHelperNet
             SANTAANITA,
             DEAUVILE,
             CHURCHILLDOWNS,
-            ABDULAZIZ
+            ABDULAZIZ,
+            ASCOT
         }
 
         public enum Houshiki
         {
             NORMAL = 0,
-            FORMATION,
-            BOX
+            FORMATION = 1,
+            BOX = 2,
+            /// <summary>軸1頭ながし(1着流し)/馬連・ワイド・枠連ながし/三連複軸1頭/三連単1着ながし。買い目「軸-相手」</summary>
+            WHEEL_1ST = 3,
+            /// <summary>2着ながし(馬単・三連単)。買い目「軸-相手」</summary>
+            WHEEL_2ND = 4,
+            /// <summary>3着ながし(三連単)。買い目「軸-相手」</summary>
+            WHEEL_3RD = 5,
+            /// <summary>軸2頭ながし(三連複)/1・2着ながし(三連単)。三連複「軸,軸-相手」/三連単「1着軸-2着軸-相手」</summary>
+            WHEEL_1ST_2ND = 6,
+            /// <summary>1・3着ながし(三連単)。買い目「1着軸-相手-3着軸」</summary>
+            WHEEL_1ST_3RD = 7,
+            /// <summary>2・3着ながし(三連単)。買い目「相手-2着軸-3着軸」</summary>
+            WHEEL_2ND_3RD = 8,
+            /// <summary>軸1頭ながしマルチ(馬単・三連単)。買い目「軸-相手」</summary>
+            WHEEL_MULTI_AXIS1 = 9,
+            /// <summary>軸2頭ながしマルチ(三連単)。買い目「軸-軸-相手」</summary>
+            WHEEL_MULTI_AXIS2 = 10
         }
 
         public enum Shikibetsu

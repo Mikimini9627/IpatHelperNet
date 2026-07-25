@@ -40,7 +40,7 @@ Install-Package IpatHelperNet
 ### .csproj に直接記述
 
 ```xml
-<PackageReference Include="IpatHelperNet" Version="1.1.6" />
+<PackageReference Include="IpatHelperNet" Version="1.1.8" />
 ```
 
 > 最新のバージョン番号は、ページ冒頭の NuGet バッジ、または [NuGet ギャラリー](https://www.nuget.org/packages/IpatHelperNet) で確認できます。
@@ -463,6 +463,12 @@ if ((ret & 1) == 1)
 | フォーメーション | 三連単 | `"1,2-3-4,5"` | 1,2番 → 3番 → 4,5番 |
 | ボックス | 馬連 | `"1,3,5,7"` | 1,3,5,7番 の全組み合わせ |
 | ボックス | 三連単 | `"2,4,6"` | 2,4,6番 の全組み合わせ |
+| ながし(`WHEEL_1ST`) | 三連単 | `"1-2,3,4"` | 1着軸1番 / 相手2,3,4番 |
+| ながし(`WHEEL_1ST_2ND`) | 三連単 | `"1-2-3,4"` | 1着軸1 / 2着軸2 / 相手3,4(着順) |
+| マルチ(`WHEEL_MULTI_AXIS1`) | 三連単 | `"1-2,3,4"` | 軸1と相手2,3,4の全着順(18点) |
+| マルチ(`WHEEL_MULTI_AXIS2`) | 三連単 | `"1-2-3,4"` | 軸2頭(1,2)と相手3,4の全着順 |
+
+ながし・マルチは中央・地方・海外すべてで指定できます(マルチは馬単・三連単のみ)。開催場に **`Kaisai.ASCOT`(アスコット)** を追加しました。
 
 ### WIN5 の例
 
