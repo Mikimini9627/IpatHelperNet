@@ -490,7 +490,7 @@ if ((ret & 1) == 1)
 `SONODA`（園田）/ `HIMEJI`（姫路）/ `NAGOYA`（名古屋）/ `MONBETSU`（門別）/ `MORIOKA`（盛岡）/ `MIZUSAWA`（水沢）/ `URAWA`（浦和）/ `FUNABASHI`（船橋）/ `OI`（大井）/ `KAWASAKI`（川崎）/ `KASAMATSU`（笠松）/ `KANAZAWA`（金沢）/ `KOCHI`（高知）/ `SAGA`（佐賀）
 
 #### 海外競馬
-`LONGCHAMP`（ロンシャン）/ `SHATIN`（シャティン）/ `SANTAANITA`（サンタアニタ）/ `DEAUVILE`（ドーヴィル）/ `CHURCHILLDOWNS`（チャーチルダウンズ）/ `ABDULAZIZ`（キングアブドゥルアジーズ）
+`LONGCHAMP`（ロンシャン）/ `SHATIN`（シャティン）/ `SANTAANITA`（サンタアニタ）/ `DEAUVILE`（ドーヴィル）/ `CHURCHILLDOWNS`（チャーチルダウンズ）/ `ABDULAZIZ`（キングアブドゥルアジーズ）/ `ASCOT`（アスコット）
 
 ### Shikibetsu（式別）
 
@@ -507,11 +507,21 @@ if ((ret & 1) == 1)
 
 ### Houshiki（方式）
 
-| 値 | 方式 |
-|---|---|
-| `NORMAL` | 通常 |
-| `FORMATION` | フォーメーション |
-| `BOX` | ボックス |
+| 値 | 方式 | 買い目の指定 |
+|---|---|---|
+| `NORMAL` | 通常 | 1点を指定 |
+| `FORMATION` | フォーメーション | 各列に複数馬番 |
+| `BOX` | ボックス | 1列に複数馬番（全組み合わせ） |
+| `WHEEL_1ST` | 軸1頭ながし（1着流し） | `"軸-相手"` |
+| `WHEEL_2ND` | 2着ながし（馬単・三連単） | `"軸-相手"` |
+| `WHEEL_3RD` | 3着ながし（三連単） | `"軸-相手"` |
+| `WHEEL_1ST_2ND` | 軸2頭ながし（三連複）／1・2着ながし（三連単） | 三連複`"軸,軸-相手"`／三連単`"1着軸-2着軸-相手"` |
+| `WHEEL_1ST_3RD` | 1・3着ながし（三連単） | `"1着軸-相手-3着軸"` |
+| `WHEEL_2ND_3RD` | 2・3着ながし（三連単） | `"相手-2着軸-3着軸"` |
+| `WHEEL_MULTI_AXIS1` | 軸1頭ながしマルチ（馬単・三連単） | `"軸-相手"`（全着順） |
+| `WHEEL_MULTI_AXIS2` | 軸2頭ながしマルチ（三連単のみ） | `"軸-軸-相手"`（全着順） |
+
+> **ながし（`WHEEL_*`）／マルチ（`WHEEL_MULTI_*`）** は「軸」と「相手」を列（ハイフン区切り）で指定します。列の意味は式別・方式で変わります。マルチは馬単・三連単でのみ指定でき、`ST_BET_DATA.multi` が `1` に設定されます。
 
 ### RETURN_VALUE（戻り値ビットフラグ）
 
