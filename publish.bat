@@ -139,6 +139,19 @@ echo [INFO] NuGet へ公開しています: %NUPKG_FILE%
 dotnet nuget push "%NUPKG_FILE%" --api-key "!API_KEY!" --source https://api.nuget.org/v3/index.json
 if errorlevel 1 goto PUSH_FAILED
 
+rem ============================================================
+rem  After a successful deploy, commit the changes to the
+rem  current branch and push. Keep this block ASCII-only.
+rem ============================================================
+echo.
+echo [INFO] committing and pushing to the current branch...
+git add -A
+git commit -m "Release %NEW_VERSION% (published to NuGet)"
+for /f "delims=" %%b in ('git rev-parse --abbrev-ref HEAD') do set "CURRENT_BRANCH=%%b"
+echo [INFO] pushing to origin/!CURRENT_BRANCH!...
+git push origin !CURRENT_BRANCH!
+if errorlevel 1 goto GIT_PUSH_FAILED
+
 echo.
 echo [SUCCESS] IpatHelperNet %NEW_VERSION% を NuGet へ公開しました。
 set EXIT_CODE=0
@@ -202,6 +215,11 @@ goto END
 
 :PUSH_FAILED
 echo [ERROR] dotnet nuget push に失敗しました。
+set EXIT_CODE=1
+goto END
+
+:GIT_PUSH_FAILED
+echo [ERROR] git push failed.
 set EXIT_CODE=1
 goto END
 
