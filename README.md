@@ -369,12 +369,14 @@ static uint GetRaceCard(Kaisai place, byte raceNo, out ST_RACECARD_DATA raceCard
 
 - ネイティブ側で確保されたメモリはラッパー内部で解放するため、呼び出し側での解放は不要です。
 - 文字列（馬名・騎手名・調教師名など）は UTF-8 からデコード済みの `string` として格納されます。
+- `raceName` はレース名です。出馬表応答自体にレース名は含まれないため、内部で取得する開催メニューから抽出します（取得できない場合は空文字）。
 - 斤量・オッズは 10 倍の整数で格納されます。実際の値は `/ 10.0`。
 
 ```csharp
 uint ret = IpatHelper.GetRaceCard(IpatHelper.Kaisai.TOKYO, 11, out var raceCard);
 if ((ret & 1) == 1)
 {
+    Console.WriteLine($"レース名: {raceCard.raceName}");
     Console.WriteLine($"オッズ更新時刻: {raceCard.oddsTime} / 出走頭数: {raceCard.entryCount}");
     foreach (var e in raceCard.entries)
     {
@@ -392,6 +394,7 @@ if ((ret & 1) == 1)
 | `ST_RACECARD_DATA` | `place` / `raceNo` | 開催場 / レース番号 |
 | | `oddsTime` | オッズ更新時刻 "HH:MM" |
 | | `entryCount` / `entries` | 出走馬数 / 出走馬明細配列 |
+| | `raceName` | レース名（開催メニューから取得, 取得不可時は空文字） |
 | `ST_ENTRY_DETAIL` | `wakuban` / `umaban` | 枠番 / 馬番 |
 | | `horseName` / `sex` / `age` | 馬名 / 性別 / 年齢 |
 | | `weightStatus` / `weight` / `weightDiffCode` / `weightDiff` | 馬体重の状態・重量(kg)・増減符号・増減量 |

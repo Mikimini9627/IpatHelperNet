@@ -200,6 +200,8 @@ namespace IpatHelperNet
             public byte[] szOddsTime;
             public uint unEntryCount;
             public IntPtr pobjEntry;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public byte[] szRaceName;
         }
 
         /// <summary>
@@ -212,6 +214,7 @@ namespace IpatHelperNet
             public string oddsTime;         // オッズ更新時刻 "HH:MM"
             public uint entryCount;         // 出走馬数
             public ST_ENTRY_DETAIL[] entries; // 出走馬明細
+            public string raceName;         // レース名(開催メニューから取得, 取得不可時は空文字)
         };
 
         /// <summary>
@@ -774,7 +777,8 @@ namespace IpatHelperNet
                 ucRaceNo = 0,
                 szOddsTime = new byte[8],
                 unEntryCount = 0,
-                pobjEntry = IntPtr.Zero
+                pobjEntry = IntPtr.Zero,
+                szRaceName = new byte[128]
             };
 
             uint returnValue = NativeMethods.GetRaceCard((ushort)place, raceNo, ref tempRaceCardData);
@@ -785,7 +789,8 @@ namespace IpatHelperNet
                 raceNo = tempRaceCardData.ucRaceNo,
                 oddsTime = DecodeUtf8(tempRaceCardData.szOddsTime),
                 entryCount = tempRaceCardData.unEntryCount,
-                entries = Array.Empty<ST_ENTRY_DETAIL>()
+                entries = Array.Empty<ST_ENTRY_DETAIL>(),
+                raceName = DecodeUtf8(tempRaceCardData.szRaceName)
             };
 
             // 取得失敗、または明細が無い場合はここで解放して戻る
