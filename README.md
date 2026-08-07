@@ -448,6 +448,34 @@ if ((ret & 1) == 1)
 
 ---
 
+### BetWin5Auto — WIN5 のセレクト / ランダム購入
+
+WIN5 を「セレクト」または「ランダム」で購入します。買い目を指定する `BetWin5` と違い、**買い目はサーバが生成**します。
+
+```csharp
+static uint BetWin5Auto(Win5AutoMode mode, string axisUmaban, uint betCount, uint kingaku, DateTime kaisaibi)
+```
+
+| `Win5AutoMode` | 動作 |
+|---|---|
+| `Select` | `axisUmaban` で軸馬を指定し、`0` にしたレースはサーバが選ぶ |
+| `Random` | 5 レースすべてサーバが選ぶ（`axisUmaban` は `null` で可） |
+
+```csharp
+// ランダムで 10 点 × 100円
+uint ret = IpatHelper.BetWin5Auto(IpatHelper.Win5AutoMode.Random, null, 10, 100, new DateTime(2026, 8, 9));
+
+// セレクト: 1R の軸だけ決めて 20 点 × 100円
+ret = IpatHelper.BetWin5Auto(IpatHelper.Win5AutoMode.Select, "6,0,0,0,0", 20, 100, new DateTime(2026, 8, 9));
+```
+
+- **生成された買い目はそのまま購入されます。** 内容を事前に確認する手段はないため、呼び出す前に必ず利用者の確認を取ってください。
+- **セレクトで軸をすべて `0` にすることはできません。** 電文がランダムと同一になりサーバに拒否されます。全おまかせにしたい場合は `Random` を使ってください。
+- 点数の上限は 50 点です。合計金額が 1,000,000 円を超える場合は送信せずに `UNSUCCESS` を返します。
+- WIN5 は中央競馬のみ対応です。
+
+---
+
 ### SetLogCallback — ログの取得
 
 DLL 内部のログを受け取るハンドラを登録します（`null` で解除）。**Release ビルドの DLL でも取得できます。**
