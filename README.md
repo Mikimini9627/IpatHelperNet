@@ -685,15 +685,18 @@ finally
 
 ## 開発者向け: リリース手順
 
+公開は GitHub Actions が自動で行います。**手元での公開作業は不要**です
+（`publish.bat` は廃止しました）。
+
 ### リポジトリ構成
 
 ```
 IpatHelperNet/
-├── publish.bat              ... NuGet 公開スクリプト（リポジトリ直下）
+├── .github/workflows/release.yml ... バージョン更新・パック・NuGet 公開を行う
 ├── README.md                ... 本ファイル。パッケージの README として同梱される
 ├── IpatHelperNet.slnx
 └── IpatHelperNet/
-    ├── IpatHelperNet.csproj ... <Version> を publish.bat が自動で更新する
+    ├── IpatHelperNet.csproj ... <Version> を release.yml が自動で更新する
     ├── IpatHelper.cs        ... P/Invoke ラッパー本体
     ├── runtimes/
     │   ├── win-x64/native/IpatHelper.dll
@@ -701,50 +704,37 @@ IpatHelperNet/
     └── nupkg/               ... 生成された .nupkg（git 管理外）
 ```
 
-### 事前準備
+### 自動公開の流れ
 
-ネイティブ DLL を更新する場合は、[IpatHelperNative](https://github.com/yawatamikiya/IpatHelperNative) でビルドした
-x64 / x86 の `IpatHelper.dll` を `IpatHelperNet/runtimes/` 配下の各フォルダへ配置してください。
-
-NuGet の API キーを次のファイルに `IpatHelperNet=＜APIキー＞` の形式で記述しておきます。
-
-```
-%USERPROFILE%\.nuget\packages\publish_key.ini
-```
-
-### 公開
-
-`publish.bat` を**リポジトリ直下**に置いたまま実行します（ダブルクリックでも可）。
-バッチ自身の位置を基準に動作するため、どのフォルダから起動しても構いません。
-
-```bat
-publish.bat
-```
-
-実行すると次の処理が順に行われます。
+[IpatHelperNative](https://github.com/yawatamikiya/IpatHelperNative) の CI がビルドした
+`IpatHelper.dll` を `IpatHelperNet/runtimes/` 配下へ push してくると、それを合図に
+`release.yml` が起動して次を順に行います。
 
 1. `IpatHelperNet/IpatHelperNet.csproj` からバージョンを読み取り、**パッチ番号を +1** して書き戻す
-2. リポジトリ直下の `README.md` をプロジェクト直下へ一時コピー（`PackageReadmeFile` 用）
-3. `dotnet pack -c Release` で `IpatHelperNet/nupkg/` へパッケージを作成
-4. 一時コピーした `README.md` を削除
-5. `dotnet nuget push` で nuget.org へ公開
+2. `dotnet pack -c Release` で `IpatHelperNet/nupkg/` へパッケージを作成
+3. `dotnet nuget push` で nuget.org へ公開
+4. バージョン更新をコミットして `main` へ push する
 
-公開せずにパッケージ作成までを確認したい場合は `/dryrun` を付けます。
-このときバージョン番号は更新されません。
+DLL のパスが変わったときだけ起動するため、他のコミットでは公開は走りません。
+NuGet の API キーはリポジトリの secret `NUGET_API_KEY` から取得します。
 
-```bat
-publish.bat /dryrun
-```
+> [!NOTE]
+> `README.md` の一時コピーは不要になったため廃止しました。`.csproj` の
+> `<None Include="..\README.md" Pack="true" PackagePath="\" />` が
+> パッケージ直下へ収めるため、コピーしなくても README・ネイティブ DLL とも正しく同梱されます。
 
-### バッチ編集時の注意
+### 手動で公開する
 
-- **文字コードは Shift_JIS（CP932）、改行は CRLF** を維持してください。UTF-8 や LF で保存すると
-  `cmd.exe` が日本語部分を解釈できず、構文エラーになります。
-- 冒頭でコンソールのコードページを CP932 へ切り替え、終了時に元へ戻しています。
-  これにより、UTF-8（65001）のコンソールから実行しても正しく動作します。
-- `.csproj` のバージョン書き換えは UTF-8（BOM なし）で明示的に読み書きしています。
-  `Get-Content` / `Set-Content` を素で使うと既定の文字コードで書き戻され、
-  `.csproj` 内の日本語コメントが実行のたびに少しずつ壊れます。
+DLL を更新していないタイミングで公開したい場合は、GitHub の Actions タブから
+`Release to NuGet` を `workflow_dispatch` で実行します。
+
+`dryrun` を `true` にすると、バージョン更新も公開も行わず、パッケージ作成までを確認できます。
+作成された `.nupkg` は実行結果の Artifacts からダウンロードできます。
+
+> [!WARNING]
+> **`.csproj` の `<Version>` を手で上げないでください。** CI が +1 するため、
+> 手動でも上げると番号が飛びます。また NuGet は同一バージョンの再アップロードを
+> 拒否するため、`.csproj` の値は nuget.org の公開済み最新版と一致している必要があります。
 
 ---
 

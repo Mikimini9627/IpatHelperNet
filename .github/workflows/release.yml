@@ -3,7 +3,8 @@ name: Release to NuGet
 # IpatHelperNative の CI が新しい IpatHelper.dll を push してきたら、
 # パッチバージョンを +1 して pack し、NuGet へ公開して bump をコミットする。
 #
-# ローカルの publish.bat と同じ手順を CI 上で行うもの。相違点は 2 つ:
+# かつてローカルで実行していた publish.bat の置き換え。二重にバージョンを
+# 上げる事故を避けるため、そのバッチは削除済み。旧バッチとの相違点は 2 つ:
 #  - API キーは ~/.nuget/packages/publish_key.ini ではなく Secrets から取る
 #  - README.md の一時コピーはしない (csproj の <None Include="..\README.md" ...> が
 #    すでにパッケージ直下へ収めるため、コピーしなくても README・ネイティブ DLL とも
@@ -55,7 +56,7 @@ jobs:
             9.0.x
             10.0.x
 
-      # publish.bat と同じく <Version> のパッチ番号を +1 する。
+      # 旧 publish.bat と同じく <Version> のパッチ番号を +1 する。
       # BOM を付けずに UTF-8 で書き戻す (バッチの UTF8Encoding($false) と同じ)。
       - name: Bump patch version
         id: bump
