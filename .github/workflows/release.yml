@@ -1,0 +1,128 @@
+name: Release to NuGet
+
+# IpatHelperNative の CI が新しい IpatHelper.dll を push してきたら、
+# パッチバージョンを +1 して pack し、NuGet へ公開して bump をコミットする。
+#
+# ローカルの publish.bat と同じ手順を CI 上で行うもの。相違点は 2 つ:
+#  - API キーは ~/.nuget/packages/publish_key.ini ではなく Secrets から取る
+#  - README.md の一時コピーはしない (csproj の <None Include="..\README.md" ...> が
+#    すでにパッケージ直下へ収めるため、コピーしなくても README・ネイティブ DLL とも
+#    正しく同梱されることを確認済み)
+#
+# 無限ループにはならない: 下の push トリガーは DLL のパスだけを見ており、
+# かつこのワークフロー自身の bump コミットは GITHUB_TOKEN による push なので
+# ワークフローを再発火させない。
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'IpatHelperNet/runtimes/win-x64/native/IpatHelper.dll'
+      - 'IpatHelperNet/runtimes/win-x86/native/IpatHelper.dll'
+  workflow_dispatch:
+    inputs:
+      dryrun:
+        description: 'パッケージ作成のみ (バージョン更新も公開もしない)'
+        type: boolean
+        default: false
+
+# 公開は直列化する。並走するとバージョン採番が衝突する。
+concurrency:
+  group: release-nuget
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Pack and publish
+    runs-on: ubuntu-latest
+    env:
+      DRYRUN: ${{ inputs.dryrun && '1' || '0' }}
+      CSPROJ: IpatHelperNet/IpatHelperNet.csproj
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # csproj が net8.0 / net9.0 / net10.0 のマルチターゲットのため 3 つとも入れる。
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            9.0.x
+            10.0.x
+
+      # publish.bat と同じく <Version> のパッチ番号を +1 する。
+      # BOM を付けずに UTF-8 で書き戻す (バッチの UTF8Encoding($false) と同じ)。
+      - name: Bump patch version
+        id: bump
+        run: |
+          python3 - <<'PY'
+          import os, pathlib, re, sys
+
+          path = pathlib.Path(os.environ["CSPROJ"])
+          # newline="" で改行変換を止める。<Version> 行以外は 1 バイトも動かさない。
+          with path.open("r", encoding="utf-8", newline="") as f:
+              text = f.read()
+
+          found = re.search(r"<Version>([^<]+)</Version>", text)
+          if not found:
+              sys.exit(f"{path} に <Version> がありません")
+
+          current = found.group(1).strip()
+          parts = current.split(".")
+          if len(parts) != 3 or not parts[2].isdigit():
+              sys.exit(f"想定外のバージョン形式: {current}")
+
+          dryrun = os.environ["DRYRUN"] == "1"
+          new = current if dryrun else f"{parts[0]}.{parts[1]}.{int(parts[2]) + 1}"
+
+          if not dryrun:
+              with path.open("w", encoding="utf-8", newline="") as f:
+                  f.write(
+                      text[: found.start()]
+                      + f"<Version>{new}</Version>"
+                      + text[found.end() :]
+                  )
+
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as out:
+              out.write(f"version={new}\n")
+          print(f"{current} -> {new}" + (" (dryrun: 書き換えなし)" if dryrun else ""))
+          PY
+
+      - name: Pack
+        run: dotnet pack "$CSPROJ" -c Release -o nupkg
+
+      - name: Publish to NuGet
+        if: env.DRYRUN != '1'
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "$NUGET_API_KEY" ]; then
+            echo "::error::secret NUGET_API_KEY が未登録です" && exit 1
+          fi
+          dotnet nuget push "nupkg/IpatHelperNet.${{ steps.bump.outputs.version }}.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json
+
+      # 公開が成功したときだけ bump をコミットする (バッチと同じ順序)。
+      - name: Commit and push the version bump
+        if: env.DRYRUN != '1'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add "$CSPROJ"
+          git diff --cached --quiet && echo "No changes" && exit 0
+          git commit -m "Release ${{ steps.bump.outputs.version }} (published to NuGet)"
+          # DLL 同期の push と入れ違いになっても落ちないようリベースしてから push する
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: IpatHelperNet-${{ steps.bump.outputs.version }}
+          path: nupkg/*.nupkg
