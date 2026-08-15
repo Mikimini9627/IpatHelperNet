@@ -202,6 +202,12 @@ namespace IpatHelperNet
             public IntPtr pobjEntry;
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
             public byte[] szRaceName;
+            // ネイティブ側の ST_RACECARD_DATA へ後から追加されたフィールド。
+            // この構造体はネイティブ側が直接書き込む領域のため、
+            // 順序・型が DLL 側と一致していないとメモリ破壊になる。
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+            public byte[] szDeadline;
+            public byte ucRaceStatus;
         }
 
         /// <summary>
@@ -215,6 +221,8 @@ namespace IpatHelperNet
             public uint entryCount;         // 出走馬数
             public ST_ENTRY_DETAIL[] entries; // 出走馬明細
             public string raceName;         // レース名(開催メニューから取得, 取得不可時は空文字)
+            public string deadline;         // 発売締切時刻 "HH:MM"(取得不可時は空文字)
+            public RACE_STATUS raceStatus;  // 発売状態(締切時刻だけでは購入可否が分からないため併用する)
         };
 
         /// <summary>
@@ -351,6 +359,19 @@ namespace IpatHelperNet
         {
             TODAY = 1,
             BEFORE
+        }
+
+        /// <summary>
+        /// レースの発売状態(ST_RACECARD_DATA.raceStatus)。開催メニューの jg 由来。
+        /// UNKNOWN が 0 ではないのは、0 が「発売中」でありゼロ初期化と区別する必要があるため。
+        /// </summary>
+        public enum RACE_STATUS : byte
+        {
+            ON_SALE = 0,        // 発売中
+            CLOSED = 1,         // 発売終了
+            CANCELED = 2,       // 発売中止
+            BEFORE_SALE = 3,    // 発売前
+            UNKNOWN = 0xFF      // 取得できなかった
         }
 
         public enum RETURN_VALUE
@@ -901,7 +922,9 @@ namespace IpatHelperNet
                 szOddsTime = new byte[8],
                 unEntryCount = 0,
                 pobjEntry = IntPtr.Zero,
-                szRaceName = new byte[128]
+                szRaceName = new byte[128],
+                szDeadline = new byte[8],
+                ucRaceStatus = (byte)RACE_STATUS.UNKNOWN
             };
 
             uint returnValue = NativeMethods.GetRaceCard((ushort)place, raceNo, ref tempRaceCardData);
@@ -913,7 +936,9 @@ namespace IpatHelperNet
                 oddsTime = DecodeUtf8(tempRaceCardData.szOddsTime),
                 entryCount = tempRaceCardData.unEntryCount,
                 entries = Array.Empty<ST_ENTRY_DETAIL>(),
-                raceName = DecodeUtf8(tempRaceCardData.szRaceName)
+                raceName = DecodeUtf8(tempRaceCardData.szRaceName),
+                deadline = DecodeUtf8(tempRaceCardData.szDeadline),
+                raceStatus = (RACE_STATUS)tempRaceCardData.ucRaceStatus
             };
 
             // 取得失敗、または明細が無い場合はここで解放して戻る
