@@ -370,6 +370,7 @@ static uint GetRaceCard(Kaisai place, byte raceNo, out ST_RACECARD_DATA raceCard
 - ネイティブ側で確保されたメモリはラッパー内部で解放するため、呼び出し側での解放は不要です。
 - 文字列（馬名・騎手名・調教師名など）は UTF-8 からデコード済みの `string` として格納されます。
 - `raceName` はレース名です。出馬表応答自体にレース名は含まれないため、内部で取得する開催メニューから抽出します（取得できない場合は空文字）。
+- `deadline` は**発売締切時刻**（`"HH:MM"`）、`raceStatus` はそのレースの**発売状態**です。どちらも同じ開催メニューの `jg` から抽出するため**追加の通信は発生しません**。締切時刻だけでは購入可否が判断できないため併せて参照してください。レース名と違い**海外開催でも取得できます**。
 - 斤量・オッズは 10 倍の整数で格納されます。実際の値は `/ 10.0`。
 
 ```csharp
@@ -377,6 +378,7 @@ uint ret = IpatHelper.GetRaceCard(IpatHelper.Kaisai.TOKYO, 11, out var raceCard)
 if ((ret & 1) == 1)
 {
     Console.WriteLine($"レース名: {raceCard.raceName}");
+    Console.WriteLine($"締切: {raceCard.deadline} / 発売状態: {raceCard.raceStatus}");
     Console.WriteLine($"オッズ更新時刻: {raceCard.oddsTime} / 出走頭数: {raceCard.entryCount}");
     foreach (var e in raceCard.entries)
     {
@@ -395,6 +397,8 @@ if ((ret & 1) == 1)
 | | `oddsTime` | オッズ更新時刻 "HH:MM" |
 | | `entryCount` / `entries` | 出走馬数 / 出走馬明細配列 |
 | | `raceName` | レース名（開催メニューから取得, 取得不可時は空文字） |
+| | `deadline` | 発売締切時刻 "HH:MM"（開催メニューから取得, 取得不可時は空文字） |
+| | `raceStatus` | 発売状態 `RACE_STATUS`（`ON_SALE`=0 / `CLOSED`=1 / `CANCELED`=2 / `BEFORE_SALE`=3 / `UNKNOWN`=0xFF） |
 | `ST_ENTRY_DETAIL` | `wakuban` / `umaban` | 枠番 / 馬番 |
 | | `horseName` / `sex` / `age` | 馬名 / 性別 / 年齢 |
 | | `weightStatus` / `weight` / `weightDiffCode` / `weightDiff` | 馬体重の状態・重量(kg)・増減符号・増減量 |
