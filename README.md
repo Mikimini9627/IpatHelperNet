@@ -371,6 +371,7 @@ static uint GetRaceCard(Kaisai place, byte raceNo, out ST_RACECARD_DATA raceCard
 - 文字列（馬名・騎手名・調教師名など）は UTF-8 からデコード済みの `string` として格納されます。
 - `raceName` はレース名です。出馬表応答自体にレース名は含まれないため、内部で取得する開催メニューから抽出します（取得できない場合は空文字）。
 - `deadline` は**発売締切時刻**（`"HH:MM"`）、`raceStatus` はそのレースの**発売状態**です。どちらも同じ開催メニューの `jg` から抽出するため**追加の通信は発生しません**。締切時刻だけでは購入可否が判断できないため併せて参照してください。レース名と違い**海外開催でも取得できます**。
+- `grade` は**グレード**（`GI` / `GII` / `GIII` / `J・GI` / `J・GII` / `J・GIII` / `L`。重賞でなければ空文字）、`raceNumber` は**開催回数**（「第30回」の 30。取得できなければ 0）です。どちらも同じ開催メニューの `rn` から取得するため追加の通信は発生しません。海外開催でも取得できますが、I-PAT が返すグレードは `GI`〜`GIII` のみです。
 - 斤量・オッズは 10 倍の整数で格納されます。実際の値は `/ 10.0`。
 
 ```csharp
@@ -379,6 +380,7 @@ if ((ret & 1) == 1)
 {
     Console.WriteLine($"レース名: {raceCard.raceName}");
     Console.WriteLine($"締切: {raceCard.deadline} / 発売状態: {raceCard.raceStatus}");
+    Console.WriteLine($"グレード: {raceCard.grade} / 第{raceCard.raceNumber}回");
     Console.WriteLine($"オッズ更新時刻: {raceCard.oddsTime} / 出走頭数: {raceCard.entryCount}");
     foreach (var e in raceCard.entries)
     {
@@ -399,6 +401,7 @@ if ((ret & 1) == 1)
 | | `raceName` | レース名（開催メニューから取得, 取得不可時は空文字） |
 | | `deadline` | 発売締切時刻 "HH:MM"（開催メニューから取得, 取得不可時は空文字） |
 | | `raceStatus` | 発売状態 `RACE_STATUS`（`ON_SALE`=0 / `CLOSED`=1 / `CANCELED`=2 / `BEFORE_SALE`=3 / `UNKNOWN`=0xFF） |
+| | `grade` / `raceNumber` | グレード（重賞でなければ空文字）/ 開催回数（「第30回」の 30） |
 | `ST_ENTRY_DETAIL` | `wakuban` / `umaban` | 枠番 / 馬番 |
 | | `horseName` / `sex` / `age` | 馬名 / 性別 / 年齢 |
 | | `weightStatus` / `weight` / `weightDiffCode` / `weightDiff` | 馬体重の状態・重量(kg)・増減符号・増減量 |
