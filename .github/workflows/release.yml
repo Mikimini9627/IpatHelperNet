@@ -17,7 +17,7 @@ name: Release to NuGet
 on:
   push:
     branches:
-      - main
+      - master
     paths:
       - 'IpatHelperNet/runtimes/win-x64/native/IpatHelper.dll'
       - 'IpatHelperNet/runtimes/win-x86/native/IpatHelper.dll'
@@ -119,8 +119,8 @@ jobs:
           git diff --cached --quiet && echo "No changes" && exit 0
           git commit -m "Release ${{ steps.bump.outputs.version }} (published to NuGet)"
           # DLL 同期の push と入れ違いになっても落ちないようリベースしてから push する
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git pull --rebase origin master
+          git push origin HEAD:master
 
       - name: Upload package
         uses: actions/upload-artifact@v7
