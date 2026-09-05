@@ -18,7 +18,7 @@ JRA I-PAT（インターネット投票）への馬券購入・入出金・購�
   - 認証: [Login](#login--ログイン) / [Logout](#logout--ログアウト)
   - 入出金: [Deposit](#deposit--入金) / [Withdraw](#withdraw--出金) / [SetAutoDepositFlag](#setautodepositflag--自動入金設定) / [失敗したときの調べ方](#入出金が失敗したときの調べ方)
   - 購入: [GetBetInstance](#getbetinstance--馬券購入情報の構築) / [Bet](#bet--馬券購入) / [GetBetInstanceWin5 / BetWin5](#getbetinstancewin5--betwin5--win5-購入) / [BetWin5Auto](#betwin5auto--win5-のセレクト--ランダム購入)
-  - 情報取得: [GetPurchaseData](#getpurchasedata--購入履歴取得) / [GetOdds](#getodds--オッズ取得) / [GetRaceCard](#getracecard--出馬表取得) / [GetNotice](#getnotice--お知らせ取得)
+  - 情報取得: [GetPurchaseData](#getpurchasedata--購入履歴取得) / [GetOdds](#getodds--オッズ取得) / [GetRaceCard](#getracecard--出馬表取得) / [GetKaisaiList](#getkaisailist--開催場一覧取得) / [GetNotice](#getnotice--お知らせ取得)
   - ログ: [SetLogCallback](#setlogcallback--ログの取得)
 - [買い目文字列の書式](#買い目文字列の書式)
 - [購入明細の読み方](#購入明細の読み方) — **`horseNo[]` を読む前に必ず参照してください**
@@ -548,6 +548,55 @@ if ((ret & 1) == 1)
 | | `placeOddsStatus` / `placeOddsLow` / `placeOddsHigh` | 複勝オッズの状態 / 下限×10 / 上限×10 |
 
 > **補足:** `winOddsStatus` が `1`（発売中止）の馬は出走取消・競走除外の可能性があります。`weightStatus` が `2` の場合も出走取消です。
+
+---
+
+### GetKaisaiList — 開催場一覧取得
+
+本日開催されている開催場の一覧を取得します。開催場ごとに、レース番号・発売締切時刻・発売状態・レース名も併せて返します。
+
+```csharp
+static uint GetKaisaiList(out ST_KAISAI_DATA kaisaiData)
+```
+
+- **中央競馬・地方競馬・海外競馬に対応**しています。ログイン済みの系統を対象とし、海外は中央にログインしていれば含まれます。
+- **系統ごとに 1 回ずつ、最大 3 回の通信で全開催場が得られます。**
+  「どの開催場が開催中か」を調べるために `GetRaceCard` を開催場の数だけ呼ぶ必要はありません。
+- 片方の系統だけ失敗した場合は、**取得できた分を返したうえで** `FAILED_CHUOU` / `FAILED_CHIHOU` を立てます（`SUCCESS` と同時に立ちます）。
+- 開催が 1 つも無い場合は `kaisaiCount` が 0 で成功します。
+- ネイティブ側で確保されたメモリはラッパー内部で解放するため、呼び出し側での解放は不要です。
+
+```csharp
+uint ret = IpatHelper.GetKaisaiList(out var kaisai);
+if ((ret & 1) == 1)
+{
+    Console.WriteLine($"本日の開催: {kaisai.kaisaiCount} 場");
+    foreach (var k in kaisai.kaisai)
+    {
+        Console.WriteLine($"{k.place} ({k.raceCount}R)");
+        foreach (var r in k.races)
+        {
+            Console.WriteLine($"  {r.raceNo,2}R {r.deadline,-5} {r.raceStatus,-11} {r.raceName}");
+        }
+    }
+}
+```
+
+`ST_KAISAI_DATA` / `ST_KAISAI_ITEM` / `ST_KAISAI_RACE` の各フィールド:
+
+| 構造体 | フィールド | 内容 |
+|---|---|---|
+| `ST_KAISAI_DATA` | `kaisaiCount` / `kaisai` | 開催場数 / 開催場一覧 |
+| `ST_KAISAI_ITEM` | `place` | 開催場（`Kaisai`） |
+| | `raceCount` / `races` | レース数 / レース一覧 |
+| `ST_KAISAI_RACE` | `raceNo` | レース番号（1 始まり） |
+| | `raceStatus` | 発売状態（`RACE_STATUS`） |
+| | `deadline` | 発売締切時刻 "HH:MM"（取得不可時は空文字） |
+| | `raceName` | レース名（取得不可時は空文字。**海外開催でも取得できます**） |
+
+> **レース番号は `raceNo` で判断してください。** `races` はレース番号順に並びますが、欠番があり得るため「添字 + 1」と一致するとは限りません。
+
+> 締切時刻だけでは購入可否が判断できないため、`raceStatus` も併せて参照してください。
 
 ---
 
