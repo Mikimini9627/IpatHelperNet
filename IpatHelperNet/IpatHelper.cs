@@ -420,6 +420,93 @@ namespace IpatHelperNet
         };
 
         /// <summary>
+        /// 開催中のレース1つ分(マーシャリング用)
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ST_KAISAI_RACE_INTERNAL
+        {
+            public byte ucRaceNo;
+            public byte ucRaceStatus;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
+            public byte[] szDeadline;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 128)]
+            public byte[] szRaceName;
+        }
+
+        /// <summary>
+        /// 開催中の開催場1つ分(マーシャリング用 / レース配列はIntPtrで受ける)
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ST_KAISAI_ITEM_INTERNAL
+        {
+            public ushort usPlace;
+            public uint unRaceCount;
+            public IntPtr pobjRace;
+        }
+
+        /// <summary>
+        /// 開催場一覧(マーシャリング用 / 開催場配列はIntPtrで受ける)
+        /// </summary>
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ST_KAISAI_DATA_INTERNAL
+        {
+            public uint unKaisaiCount;
+            public IntPtr pobjKaisai;
+        }
+
+        /// <summary>
+        /// 開催中のレース1つ分(利用者向け / 文字列はUTF-8をデコード済み)
+        /// </summary>
+        public struct ST_KAISAI_RACE
+        {
+            /// <summary>レース番号(1 始まり)</summary>
+            public byte raceNo;
+
+            /// <summary>
+            /// 発売状態。締切時刻だけでは購入可否が判断できないため併せて参照すること。
+            /// </summary>
+            public RACE_STATUS raceStatus;
+
+            /// <summary>発売締切時刻 "HH:MM"。取得できない場合は空文字</summary>
+            public string deadline;
+
+            /// <summary>レース名。取得できない場合は空文字(海外開催でも取得できる)</summary>
+            public string raceName;
+        };
+
+        /// <summary>
+        /// 開催中の開催場1つ分(利用者向け)
+        /// </summary>
+        public struct ST_KAISAI_ITEM
+        {
+            /// <summary>開催場</summary>
+            public Kaisai place;
+
+            /// <summary>レース数</summary>
+            public uint raceCount;
+
+            /// <summary>
+            /// <para>レース一覧。</para>
+            /// <para>レース番号順に並ぶが、欠番があり得るため
+            /// <b>レース番号は <see cref="ST_KAISAI_RACE.raceNo"/> で判断すること</b>
+            /// (添字 + 1 と一致するとは限らない)。</para>
+            /// </summary>
+            public ST_KAISAI_RACE[] races;
+        };
+
+        /// <summary>
+        /// 本日の開催場一覧(利用者向け)
+        /// </summary>
+        public struct ST_KAISAI_DATA
+        {
+            /// <summary>開催場数</summary>
+            public uint kaisaiCount;
+
+            /// <summary>開催場一覧</summary>
+            public ST_KAISAI_ITEM[] kaisai;
+        };
+
+        /// <summary>
         /// お知らせ情報(利用者向け)
         /// </summary>
         public struct ST_NOTICE_DATA
@@ -818,6 +905,12 @@ namespace IpatHelperNet
 
             [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
             internal static extern void ReleaseNoticeData(ref ST_NOTICE_DATA_INTERNAL objNoticeData);
+
+            [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern uint GetKaisaiList(ref ST_KAISAI_DATA_INTERNAL objKaisaiData);
+
+            [DllImport("IpatHelper.dll", CallingConvention = CallingConvention.Cdecl)]
+            internal static extern void ReleaseKaisaiData(ref ST_KAISAI_DATA_INTERNAL objKaisaiData);
         }
         #endregion
 
@@ -1369,6 +1462,87 @@ namespace IpatHelperNet
 
             // データの複製が終わったら、取得と同時にネイティブ側のメモリを解放する
             NativeMethods.ReleaseNoticeData(ref tempNoticeData);
+
+            return returnValue;
+        }
+
+        /// <summary>
+        /// <para>本日開催されている開催場の一覧を取得する。</para>
+        /// <para>開催場ごとに、レース番号・発売締切時刻・発売状態・レース名も併せて返す。</para>
+        /// <para>ログイン済みの系統(中央・地方)と、中央にログインしていれば海外を対象とする。
+        /// <b>系統ごとに1回ずつ、最大3回の通信で全開催場が得られる</b>ため、
+        /// 「どの開催場が開催中か」を調べるために <see cref="GetRaceCard"/> を
+        /// 開催場の数だけ呼ぶ必要はない。</para>
+        /// <para>片方の系統だけ失敗した場合は、取得できた分を返したうえで
+        /// <see cref="RETURN_VALUE.FAILED_CHUOU"/> / <see cref="RETURN_VALUE.FAILED_CHIHOU"/>
+        /// を立てる(<see cref="RETURN_VALUE.SUCCESS"/> と同時に立つ)。</para>
+        /// <para>開催が1つも無い場合は kaisaiCount が 0 で成功を返す。</para>
+        /// <para>ネイティブ側のメモリ解放はラッパー内部で行う。</para>
+        /// </summary>
+        /// <param name="kaisaiData">取得した開催場一覧</param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
+        public static uint GetKaisaiList(out ST_KAISAI_DATA kaisaiData)
+        {
+            ST_KAISAI_DATA_INTERNAL tempKaisaiData = new()
+            {
+                unKaisaiCount = 0,
+                pobjKaisai = IntPtr.Zero
+            };
+
+            uint returnValue = NativeMethods.GetKaisaiList(ref tempKaisaiData);
+
+            kaisaiData = new ST_KAISAI_DATA()
+            {
+                kaisaiCount = tempKaisaiData.unKaisaiCount,
+                kaisai = Array.Empty<ST_KAISAI_ITEM>()
+            };
+
+            // 取得失敗、または開催が無い場合はここで解放して戻る
+            if ((returnValue & 1) != 1 || tempKaisaiData.unKaisaiCount <= 0 || tempKaisaiData.pobjKaisai == IntPtr.Zero)
+            {
+                kaisaiData.kaisaiCount = 0;
+                NativeMethods.ReleaseKaisaiData(ref tempKaisaiData);
+                return returnValue;
+            }
+
+            // ネイティブ側で確保された配列をマネージド配列へ複製する
+            kaisaiData.kaisai = new ST_KAISAI_ITEM[tempKaisaiData.unKaisaiCount];
+            int itemSize = Marshal.SizeOf(typeof(ST_KAISAI_ITEM_INTERNAL));
+            int raceSize = Marshal.SizeOf(typeof(ST_KAISAI_RACE_INTERNAL));
+            for (int i = 0; i < tempKaisaiData.unKaisaiCount; i++)
+            {
+                IntPtr itemPtr = IntPtr.Add(tempKaisaiData.pobjKaisai, i * itemSize);
+                ST_KAISAI_ITEM_INTERNAL it = Marshal.PtrToStructure<ST_KAISAI_ITEM_INTERNAL>(itemPtr);
+
+                var races = Array.Empty<ST_KAISAI_RACE>();
+                if (it.unRaceCount > 0 && it.pobjRace != IntPtr.Zero)
+                {
+                    races = new ST_KAISAI_RACE[it.unRaceCount];
+                    for (int r = 0; r < it.unRaceCount; r++)
+                    {
+                        IntPtr racePtr = IntPtr.Add(it.pobjRace, r * raceSize);
+                        ST_KAISAI_RACE_INTERNAL rc = Marshal.PtrToStructure<ST_KAISAI_RACE_INTERNAL>(racePtr);
+
+                        races[r] = new ST_KAISAI_RACE()
+                        {
+                            raceNo = rc.ucRaceNo,
+                            raceStatus = (RACE_STATUS)rc.ucRaceStatus,
+                            deadline = DecodeUtf8(rc.szDeadline),
+                            raceName = DecodeUtf8(rc.szRaceName)
+                        };
+                    }
+                }
+
+                kaisaiData.kaisai[i] = new ST_KAISAI_ITEM()
+                {
+                    place = (Kaisai)it.usPlace,
+                    raceCount = (uint)races.Length,
+                    races = races
+                };
+            }
+
+            // データの複製が終わったら、取得と同時にネイティブ側のメモリを解放する
+            NativeMethods.ReleaseKaisaiData(ref tempKaisaiData);
 
             return returnValue;
         }
