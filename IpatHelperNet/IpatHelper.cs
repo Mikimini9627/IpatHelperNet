@@ -8,19 +8,100 @@ namespace IpatHelperNet
 {
     public class IpatHelper
     {
+        #region 定数
+        /// <summary>フォーメーションでの列数(<see cref="ST_BET_DATA.horseNo"/> の要素数)</summary>
+        public const int UMABAN_COLUMN_COUNT = 3;
+
+        /// <summary>購入履歴の列数(<see cref="ST_TICKET_DATA_DETAIL.horseNo"/> の要素数。WIN5 の 5 レース分を含む)</summary>
+        public const int UMABAN_TICKET_COLUMN_COUNT = 5;
+
+        /// <summary>WIN5 のレース数</summary>
+        public const int WIN5_RACE_COUNT = 5;
+
+        /// <summary>
+        /// <para>1 回の送信あたりの合計購入金額の上限(円)。</para>
+        /// <para>I-PAT 側でも同じ上限が課されており、1 点でもこの上限が効くため
+        /// 1 点あたりの金額の上限もこの値になる。</para>
+        /// </summary>
+        public const uint MAX_TOTAL_AMOUNT_PER_SEND = 1000000;
+
+        /// <summary><see cref="Deposit"/> / <see cref="Withdraw"/> の既定リトライ回数</summary>
+        public const ushort DEFAULT_RETRY_COUNT = 10;
+
+        /// <summary><see cref="SetAutoDepositFlag"/> の既定入金額(円)</summary>
+        public const uint DEPOSIT_DEFAULT_VALUE = 1000;
+
+        /// <summary>残高反映を待つ既定のタイムアウト(ms)</summary>
+        public const ushort DEFAULT_CONFIRM_TIMEOUT = 10000;
+
+        /// <summary>
+        /// <para>分割送信の間隔(ms)の既定値。<b>タイムアウトではない。</b></para>
+        /// <para>本ラッパーの <see cref="Bet"/> / <see cref="BetWin5"/> は、これより余裕を持たせた
+        /// <see cref="DEFAULT_BET_INTERVAL_MANAGED"/> を既定値として渡す。</para>
+        /// </summary>
+        public const ushort DEFAULT_BET_INTERVAL = 500;
+
+        /// <summary>
+        /// 本ラッパーの <see cref="Bet"/> / <see cref="BetWin5"/> が使う分割送信の間隔(ms)。
+        /// DLL の既定値より保守的に取ってある。
+        /// </summary>
+        public const ushort DEFAULT_BET_INTERVAL_MANAGED = 1000;
+
+        /// <summary><see cref="BetWin5Auto"/> で生成させられる点数の上限</summary>
+        public const ushort MAX_WIN5_AUTO_BET_COUNT = 50;
+        #endregion
+
         #region 構造体
+        /// <summary>
+        /// <para>馬券 1 点分の詳細情報。<b>購入時の指定そのものではなく、投票内容から復元した値</b>。</para>
+        /// <para><see cref="horseNo"/> の各列が何を指すかは <see cref="method"/>(方式)と
+        /// <see cref="type"/>(式別)の組み合わせで変わる。列を機械的に "-" で連結すると
+        /// 誤った買い目になる(README「購入明細の読み方」を参照)。</para>
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct ST_TICKET_DATA_DETAIL
         {
+            /// <summary>
+            /// 確定フラグ(<see cref="DECISIONFLAG"/>)。
+            /// <see cref="DECISIONFLAG.PARSE_FAILED"/>(0)はその明細を解析できなかったことを表す。
+            /// </summary>
             public byte decisionFlag;
+
+            /// <summary>
+            /// <para>券種(<see cref="BET_FLAG"/>)。通常 / WIN5 / 海外のいずれか。</para>
+            /// <para>中央の購入履歴には海外の馬券も並ぶため、区別にはこの値を使う。</para>
+            /// </summary>
             public byte betFlag;
+
+            /// <summary>開催場(<see cref="Kaisai"/>)。WIN5 の明細では 0xFF</summary>
             public ushort kaisai;
+
+            /// <summary>レース番号。WIN5 の明細では 0xFF</summary>
             public byte raceNo;
+
+            /// <summary>週</summary>
             public byte week;
+
+            /// <summary>方式(<see cref="Houshiki"/> と同じ値)。WIN5 の明細では 0xFF</summary>
             public byte method;
+
+            /// <summary>式別(<see cref="Shikibetsu"/> と同じ値)。WIN5 の明細では 0xFF</summary>
             public byte type;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)]
+
+            /// <summary>
+            /// <para>買い目(列ごとの馬番ビットフラグ)。bit 0 が馬番 1。
+            /// 判定は <c>(horseNo[列] &amp; (1u &lt;&lt; (馬番 - 1))) != 0</c>。</para>
+            /// <para>枠連だけは馬番ではなく枠番(bit 0 が枠 1)。使わない列は 0。
+            /// <c>horseNo[3]</c> / <c>horseNo[4]</c> は WIN5 専用。</para>
+            /// </summary>
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = UMABAN_TICKET_COLUMN_COUNT)]
             public uint[] horseNo;
+
+            /// <summary>
+            /// <para>マルチかどうか(0:通常 1:マルチ)。</para>
+            /// <para><b>マルチの判定は必ずこの値で行うこと。</b><see cref="method"/> では判定できない
+            /// (マルチは基底のながし方式のまま記録されることがある)。</para>
+            /// </summary>
             public byte multi;
         };
 
@@ -50,52 +131,118 @@ namespace IpatHelperNet
             public IntPtr ticketData;
         };
 
+        /// <summary>
+        /// 1 受付分の馬券基本情報(利用者向け)
+        /// </summary>
         public struct ST_TICKET_DATA
         {
+            /// <summary>購入日フラグ(<see cref="DAY_TYPE"/>: 1:当日 / 2:前日)</summary>
             public byte dayFlag;
+
+            /// <summary>受付番号</summary>
             public byte receiptNo;
+
+            /// <summary>購入時刻(時)。応答から時刻を読み取れなかった受付では 0</summary>
             public byte hour;
+
+            /// <summary>購入時刻(分)。応答から時刻を読み取れなかった受付では 0</summary>
             public byte minute;
+
+            /// <summary>購入金額(円)</summary>
             public uint kingaku;
+
+            /// <summary>払戻金額(円)</summary>
             public uint payout;
+
+            /// <summary>明細の件数</summary>
             public uint detailCount;
+
+            /// <summary>明細の配列</summary>
             public ST_TICKET_DATA_DETAIL[] detailData;
         };
 
+        /// <summary>
+        /// 馬券購入履歴全体(利用者向け)
+        /// </summary>
         public struct ST_PURCHASE_DATA
         {
+            /// <summary>残購入可能件数</summary>
             public ushort remainBetCount;
+
+            /// <summary>現在の残高(円)</summary>
             public uint balance;
+
+            /// <summary>当日購入金額(円)</summary>
             public uint dayPurchase;
+
+            /// <summary>当日払戻金額(円)</summary>
             public uint dayHaraimodosi;
+
+            /// <summary>累計購入金額(円)</summary>
             public uint totalPurchase;
+
+            /// <summary>累計払戻金額(円)</summary>
             public uint totalHaraimodosi;
+
+            /// <summary>馬券(受付)の件数</summary>
             public uint ticketCount;
+
+            /// <summary>馬券(受付)の配列。中央 → 地方の順に連結される</summary>
             public ST_TICKET_DATA[] ticketData;
         };
 
+        /// <summary>
+        /// 馬券購入情報。<see cref="GetBetInstance"/> で構築して <see cref="Bet"/> へ渡す。
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct ST_BET_DATA
         {
+            /// <summary>開催場(<see cref="Kaisai"/>)</summary>
             public ushort kaisai;
+
+            /// <summary>レース番号(1〜14)</summary>
             public byte raceNo;
+
+            /// <summary>曜日(<see cref="WEEK_DAY"/>)</summary>
             public byte youbi;
+
+            /// <summary>方式(<see cref="Houshiki"/>)</summary>
             public byte houshiki;
+
+            /// <summary>式別(<see cref="Shikibetsu"/>)</summary>
             public byte shikibetsu;
+
+            /// <summary>1 点あたりの金額(円)</summary>
             public uint kingaku;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 3)]
+
+            /// <summary>買い目(列ごとの馬番ビットフラグ。bit 0 が馬番 1)</summary>
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = UMABAN_COLUMN_COUNT)]
             public uint[] horseNo;
+
+            /// <summary>
+            /// 合計購入金額(円)。<see cref="GetBetInstance"/> が自動計算する。
+            /// 応援馬券は指定金額の 2 倍になる。
+            /// </summary>
             public uint totalAmount;
+
             /// <summary>マルチかどうか(0:通常 1:マルチ)。GetBetInstance がマルチ指定時に設定。</summary>
             public byte multi;
         };
 
+        /// <summary>
+        /// 馬券購入情報(WIN5)。<see cref="GetBetInstanceWin5"/> で構築して <see cref="BetWin5"/> へ渡す。
+        /// </summary>
         [StructLayout(LayoutKind.Sequential)]
         public struct ST_BET_DATA_WIN5
         {
+            /// <summary>1 点あたりの金額(円)</summary>
             public uint kingaku;
+
+            /// <summary>曜日(<see cref="WEEK_DAY"/>)</summary>
             public byte youbi;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 5)]
+
+            /// <summary>第 1〜第 5 レースの買い目(馬番ビットフラグ。bit 0 が馬番 1)</summary>
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = WIN5_RACE_COUNT)]
             public uint[] horseNo;
         };
 
@@ -205,12 +352,10 @@ namespace IpatHelperNet
             // ネイティブ側の ST_RACECARD_DATA へ後から追加されたフィールド。
             // この構造体はネイティブ側が直接書き込む領域のため、
             // 順序・型が DLL 側と一致していないとメモリ破壊になる。
+            // 末尾へ勝手にフィールドを足さないこと(DLL が書かない領域を読むだけになる)。
             [MarshalAs(UnmanagedType.ByValArray, SizeConst = 8)]
             public byte[] szDeadline;
             public byte ucRaceStatus;
-            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 16)]
-            public byte[] szGrade;
-            public ushort usRaceNumber;
         }
 
         /// <summary>
@@ -223,11 +368,9 @@ namespace IpatHelperNet
             public string oddsTime;         // オッズ更新時刻 "HH:MM"
             public uint entryCount;         // 出走馬数
             public ST_ENTRY_DETAIL[] entries; // 出走馬明細
-            public string raceName;         // レース名(開催メニューから取得, 取得不可時は空文字)
+            public string raceName;         // レース名(取得不可時は空文字。海外開催でも取得できる)
             public string deadline;         // 発売締切時刻 "HH:MM"(取得不可時は空文字)
             public RACE_STATUS raceStatus;  // 発売状態(締切時刻だけでは購入可否が分からないため併用する)
-            public string grade;            // グレード "GI"/"J・GI"/"L" 等(重賞でなければ空文字)
-            public ushort raceNumber;       // 開催回数(「第30回」の 30。取得不可時は 0)
         };
 
         /// <summary>
@@ -290,6 +433,10 @@ namespace IpatHelperNet
         #endregion
 
         #region 列挙体
+        /// <summary>
+        /// <para>開催場。値は固定されており、開催場が追加される場合は必ず末尾へ追加される。</para>
+        /// <para>SAPPORO〜KOKURA が中央、SONODA〜SAGA が地方、LONGCHAMP 以降が海外。</para>
+        /// </summary>
         public enum Kaisai
         {
             SAPPORO,
@@ -319,16 +466,31 @@ namespace IpatHelperNet
             LONGCHAMP,
             SHATIN,
             SANTAANITA,
-            DEAUVILE,
+
+            /// <summary>ドーヴィル</summary>
+            DEAUVILLE,
+
+            /// <summary>ドーヴィル(綴りを誤った旧名。<see cref="DEAUVILLE"/> と同じ値)</summary>
+            [Obsolete("綴りを修正した DEAUVILLE を使用してください。値は同じです。")]
+            DEAUVILE = DEAUVILLE,
+
             CHURCHILLDOWNS,
             ABDULAZIZ,
             ASCOT
         }
 
+        /// <summary>
+        /// <para>方式。ながし系(WHEEL_*)は買い目の列(ハイフン区切り)の意味が式別により異なる。</para>
+        /// <para>マルチ(WHEEL_MULTI_*)は馬単・三連単のみ有効で、<see cref="GetBetInstance"/> が
+        /// 内部で基底のながし方式＋マルチフラグへ変換する。</para>
+        /// </summary>
         public enum Houshiki
         {
+            /// <summary>通常</summary>
             NORMAL = 0,
+            /// <summary>フォーメーション</summary>
             FORMATION = 1,
+            /// <summary>ボックス</summary>
             BOX = 2,
             /// <summary>軸1頭ながし(1着流し)/馬連・ワイド・枠連ながし/三連複軸1頭/三連単1着ながし。買い目「軸-相手」</summary>
             WHEEL_1ST = 3,
@@ -348,26 +510,55 @@ namespace IpatHelperNet
             WHEEL_MULTI_AXIS2 = 10
         }
 
+        /// <summary>
+        /// 式別
+        /// </summary>
         public enum Shikibetsu
         {
+            /// <summary>単勝</summary>
             WIN = 1,
+            /// <summary>複勝</summary>
             PLACE,
+            /// <summary>
+            /// <para>枠連。買い目は馬番ではなく<b>枠番(1〜8)</b>で指定する。</para>
+            /// <para>ゾロ目は同じ枠を 2 つ("3-3")。通常方式で枠 1 つだけの "3" も同じ意味。</para>
+            /// <para>海外開催では購入できない(枠の概念が無いため)。</para>
+            /// </summary>
             BRACKETQUINELLA,
+            /// <summary>馬連</summary>
             QUINELLA,
+            /// <summary>ワイド</summary>
             QUINELLAPLACE,
+            /// <summary>馬単</summary>
             EXACTA,
+            /// <summary>三連複</summary>
             TRIO,
-            TRIFECTA
+            /// <summary>三連単</summary>
+            TRIFECTA,
+            /// <summary>
+            /// <para>応援馬券(同一馬の単勝＋複勝のセット)。方式は <see cref="Houshiki.NORMAL"/>・馬番 1 頭のみ。</para>
+            /// <para><b>合計購入金額は指定金額の 2 倍</b>になる(100 円指定 = 単勝 100 円 + 複勝 100 円)。
+            /// 点数も 2 点として数える。</para>
+            /// <para>送信時に単勝と複勝の 2 点へ展開されるため、
+            /// <b>購入履歴には単勝と複勝が別々の馬券として現れる</b>。</para>
+            /// <para><see cref="GetOdds"/> にこの式別は指定できない(単勝・複勝を個別に取得すること)。</para>
+            /// </summary>
+            WINPLACE
         }
 
+        /// <summary>
+        /// 購入日種類(<see cref="ST_TICKET_DATA.dayFlag"/>)
+        /// </summary>
         public enum DAY_TYPE
         {
+            /// <summary>当日</summary>
             TODAY = 1,
+            /// <summary>前日</summary>
             BEFORE
         }
 
         /// <summary>
-        /// レースの発売状態(ST_RACECARD_DATA.raceStatus)。開催メニューの jg 由来。
+        /// レースの発売状態(<see cref="ST_RACECARD_DATA.raceStatus"/>)。
         /// UNKNOWN が 0 ではないのは、0 が「発売中」でありゼロ初期化と区別する必要があるため。
         /// </summary>
         public enum RACE_STATUS : byte
@@ -379,29 +570,72 @@ namespace IpatHelperNet
             UNKNOWN = 0xFF      // 取得できなかった
         }
 
-        public enum RETURN_VALUE
+        /// <summary>
+        /// 戻り値のビットフラグ。複数のフラグが同時に立つことがある。
+        /// </summary>
+        [Flags]
+        public enum RETURN_VALUE : uint
         {
+            /// <summary>処理に成功</summary>
             SUCCESS = 1,
+            /// <summary>処理に失敗(パラメータ不正・残高不足・未ログイン等)</summary>
             UNSUCCESS = 2,
+            /// <summary>中央競馬での処理に失敗</summary>
             FAILED_CHUOU = 4,
+            /// <summary>地方競馬での処理に失敗</summary>
             FAILED_CHIHOU = 8,
+            /// <summary>中央競馬での通信に失敗</summary>
             FAILED_COMMUNICATE_CHUOU = 16,
+            /// <summary>地方競馬での通信に失敗</summary>
             FAILED_COMMUNICATE_CHIHOU = 32,
+
+            /// <summary>
+            /// <para>サービス時間外(ログインフォームが提供されていない)。</para>
+            /// <para><see cref="Login"/> でのみ立ち、<see cref="FAILED_CHUOU"/> /
+            /// <see cref="FAILED_CHIHOU"/> と<b>併せて</b>立つ。</para>
+            /// <para>最も多い原因は投票受付時間外(特に地方競馬は営業時間外に必ずこの状態になる)。
+            /// メンテナンス中も同じ状態になり得るため両者は区別できない。</para>
+            /// <para><b>即座のリトライは必ず失敗する。</b>時間をおいて再試行すること。</para>
+            /// </summary>
+            FAILED_OUT_OF_SERVICE = 64,
         }
 
+        /// <summary>
+        /// 曜日(<see cref="ST_BET_DATA.youbi"/>)
+        /// </summary>
         public enum WEEK_DAY
         {
+            /// <summary>日曜日</summary>
             SUNDAY = 1,
+            /// <summary>月曜日</summary>
             MONDAY,
+            /// <summary>火曜日</summary>
             TUESDAY,
+            /// <summary>水曜日</summary>
             WEDNESDAY,
+            /// <summary>木曜日</summary>
             THURSDAY,
+            /// <summary>金曜日</summary>
             FRIDAY,
+            /// <summary>土曜日</summary>
             SATURDAY
         }
 
+        /// <summary>
+        /// 確定フラグ(<see cref="ST_TICKET_DATA_DETAIL.decisionFlag"/>)
+        /// </summary>
         public enum DECISIONFLAG
         {
+            /// <summary>
+            /// <para>その明細を解析できなかったことを表す。</para>
+            /// <para>他の明細・他の受付は正常に返される。この明細は
+            /// <see cref="ST_TICKET_DATA_DETAIL.betFlag"/> にその受付の券種が入り、
+            /// それ以外のフィールドはすべて 0 になる。</para>
+            /// <para>金額は明細ではなく <see cref="ST_TICKET_DATA.kingaku"/> /
+            /// <see cref="ST_TICKET_DATA.payout"/> に入っているため、集計には影響しない。</para>
+            /// </summary>
+            PARSE_FAILED = 0,
+
             DEFAULT = 1,
             NORMAL,
             DEADLINE,
@@ -415,10 +649,16 @@ namespace IpatHelperNet
             SALECANCEL
         }
 
+        /// <summary>
+        /// 券種(<see cref="ST_TICKET_DATA_DETAIL.betFlag"/>)
+        /// </summary>
         public enum BET_FLAG
         {
+            /// <summary>通常</summary>
             NORMAL,
+            /// <summary>WIN5</summary>
             WIN5,
+            /// <summary>海外(中央の購入履歴に混在する)</summary>
             INTERNATIONAL
         }
         #endregion
@@ -583,56 +823,91 @@ namespace IpatHelperNet
 
         #region 公開関数
         /// <summary>
-        /// ログイン処理実行
+        /// <para>I-PAT へログインする。中央競馬と地方競馬へ並列でログインを試みる。</para>
+        /// <para>他のすべての API を呼び出す前に必ず実行すること。</para>
+        /// <para>どちらか一方でも成功すれば <see cref="RETURN_VALUE.SUCCESS"/> が立つ。
+        /// 失敗した系統は <see cref="RETURN_VALUE.FAILED_CHUOU"/> /
+        /// <see cref="RETURN_VALUE.FAILED_CHIHOU"/> で判別する。</para>
+        /// <para>受付時間外・メンテナンス中は、それらと併せて
+        /// <see cref="RETURN_VALUE.FAILED_OUT_OF_SERVICE"/> が立つ。この場合の即時リトライは
+        /// 必ず失敗するため、時間をおいて再試行すること。</para>
         /// </summary>
-        /// <param name="iNetId"></param>
-        /// <param name="id"></param>
-        /// <param name="password"></param>
-        /// <param name="pars"></param>
-        /// <returns></returns>
+        /// <param name="iNetId">I-NET ID</param>
+        /// <param name="id">ログイン ID(加入者番号)</param>
+        /// <param name="password">パスワード</param>
+        /// <param name="pars">P-ARS 番号</param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint Login(string iNetId, string id, string password, string pars)
         {
-            Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
-
-            return NativeMethods.Login(Encoding.UTF8.GetBytes(iNetId + "\0"),
-                                       Encoding.UTF8.GetBytes(id + "\0"),
-                                       Encoding.UTF8.GetBytes(password + "\0"),
-                                       Encoding.UTF8.GetBytes(pars + "\0"));
+            return NativeMethods.Login(ToNullTerminatedUtf8(iNetId),
+                                       ToNullTerminatedUtf8(id),
+                                       ToNullTerminatedUtf8(password),
+                                       ToNullTerminatedUtf8(pars));
         }
 
         /// <summary>
-        /// ログアウト処理実行
+        /// <para>I-PAT からログアウトし、内部セッション情報・自動入金設定を初期化する。</para>
+        /// <para>サーバへの通知に失敗しても後始末は必ず行われ、本 API 自体は成功を返す。</para>
         /// </summary>
-        /// <returns></returns>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint Logout()
         {
             return NativeMethods.Logout();
         }
 
         /// <summary>
-        /// 入金処理実行
+        /// <para>登録口座から I-PAT 口座へ入金する。</para>
+        /// <para>入金指示の完了後、入金額が残高へ加算されたことを確認できるまで待機し、
+        /// 反映を確認できた場合のみ成功を返す(待機時間の上限は
+        /// <see cref="SetAutoDepositFlag"/> の confirmTimeout)。</para>
+        /// <para><b>即PAT(ネットバンク)会員専用。</b>A-PAT 会員は
+        /// <see cref="RETURN_VALUE.UNSUCCESS"/> になる。</para>
+        /// <para><b>登録口座が PayPay(コード決済アプリ)の場合は利用できない。</b>
+        /// 通信を行わず <see cref="RETURN_VALUE.UNSUCCESS"/> を返す。
+        /// PayPay<b>銀行</b>は従来どおり利用できる(別物)。</para>
         /// </summary>
-        /// <param name="depositValue"></param>
-        /// <returns></returns>
-        public static uint Deposit(uint depositValue, ushort retryCount = 10)
+        /// <param name="depositValue">入金額(円・100 円単位)</param>
+        /// <param name="retryCount">
+        /// <para>リトライ回数。適用されるのは<b>入金実行前の準備段階のみ</b>。</para>
+        /// <para>入金実行そのものは、応答を受信できなくてもサーバ側で成立している可能性があるため
+        /// 再送しない(二重入金の防止)。成否は残高への反映で判定する。</para>
+        /// </param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
+        public static uint Deposit(uint depositValue, ushort retryCount = DEFAULT_RETRY_COUNT)
         {
             return NativeMethods.Deposit(depositValue, retryCount);
         }
 
         /// <summary>
-        /// 出金処理実行
+        /// <para>I-PAT 口座から登録口座へ<b>全額</b>出金する。</para>
+        /// <para>出金指示の完了後、残高が 0 になったことを確認できるまで待機し、
+        /// 反映を確認できた場合のみ成功を返す。</para>
+        /// <para><see cref="Deposit"/> と同じく<b>即PAT(ネットバンク)会員専用</b>で、
+        /// 登録口座が PayPay(コード決済アプリ)の場合は利用できない。</para>
         /// </summary>
-        /// <returns></returns>
-        public static uint Withdraw(ushort retryCount = 10)
+        /// <param name="retryCount">
+        /// リトライ回数。<see cref="Deposit"/> と同じく準備段階にのみ適用され、
+        /// 出金の実行そのものは再送しない(二重出金の防止)。
+        /// </param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
+        public static uint Withdraw(ushort retryCount = DEFAULT_RETRY_COUNT)
         {
             return NativeMethods.Withdraw(retryCount);
         }
 
         /// <summary>
-        /// 馬券購入状況取得処理実行
+        /// <para>当日・前日の馬券購入履歴を取得する。ネイティブ側のメモリ解放はラッパー内部で行う。</para>
+        /// <para>購入履歴は会場ごとに別のサイトが保持しているため、<b>ログイン済みの会場すべてから
+        /// 取得して連結</b>する(中央 → 地方の順)。海外の馬券は中央の履歴に含まれる。</para>
+        /// <para>残高・購入可能件数・当日/累計の金額は<b>合算しない</b>
+        /// (中央・地方は同じ即PAT 口座を共有するため)。</para>
+        /// <para>片方の会場だけ取得に失敗した場合は、取得できた分を返したうえで
+        /// <see cref="RETURN_VALUE.FAILED_CHUOU"/> / <see cref="RETURN_VALUE.FAILED_CHIHOU"/> を立てる
+        /// (<see cref="RETURN_VALUE.SUCCESS"/> と同時に立つ)。履歴の欠けを検出したい場合は
+        /// これらのフラグも確認すること。</para>
         /// </summary>
-        /// <param name="purchaseData"></param>
-        /// <returns></returns>
+        /// <param name="purchaseData">取得した購入履歴</param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint GetPurchaseData(out ST_PURCHASE_DATA purchaseData)
         {
             ST_PURCHASE_DATA_INTERNAL tempTicketData = new()
@@ -667,8 +942,10 @@ namespace IpatHelperNet
                 ticketData = new ST_TICKET_DATA[tempTicketData.ticketCount]
             };
 
-            if (tempTicketData.ticketCount <= 0)
+            if (tempTicketData.ticketCount <= 0 || tempTicketData.ticketData == IntPtr.Zero)
             {
+                purchaseData.ticketCount = 0;
+                purchaseData.ticketData = Array.Empty<ST_TICKET_DATA>();
                 NativeMethods.ReleasePurchaseData(ref tempTicketData);
                 return returnValue;
             }
@@ -705,10 +982,13 @@ namespace IpatHelperNet
                     detailData = new ST_TICKET_DATA_DETAIL[tempTicket.detailCount]
                 };
 
-                if (tempTicket.detailCount <= 0)
+                // 明細を持たない受付があっても、後続の受付は正常に返される。
+                // ここで打ち切ると以降の馬券をすべて取りこぼすため次の受付へ進む。
+                if (tempTicket.detailCount <= 0 || tempTicket.detailData == IntPtr.Zero)
                 {
-                    NativeMethods.ReleasePurchaseData(ref tempTicketData);
-                    return returnValue;
+                    purchaseData.ticketData[i].detailCount = 0;
+                    purchaseData.ticketData[i].detailData = Array.Empty<ST_TICKET_DATA_DETAIL>();
+                    continue;
                 }
 
                 // 構造体データ格納用バッファを確保する
@@ -739,17 +1019,23 @@ namespace IpatHelperNet
         }
 
         /// <summary>
-        /// 馬券購入用インスタンス取得
+        /// <para>買い目文字列から馬券購入情報を構築する。<see cref="Bet"/> の前に必ず実行すること。</para>
+        /// <para>通信もグローバル状態の参照も行わないため、他の API の通信中でも並行して呼び出せる。</para>
         /// </summary>
-        /// <param name="place"></param>
-        /// <param name="raceNo"></param>
-        /// <param name="kaisaibi"></param>
-        /// <param name="houshiki"></param>
-        /// <param name="shikibetsu"></param>
-        /// <param name="kingaku"></param>
-        /// <param name="kaime"></param>
-        /// <param name="betData"></param>
-        /// <returns></returns>
+        /// <param name="place">開催場</param>
+        /// <param name="raceNo">レース番号(1〜14)。範囲外は <see cref="RETURN_VALUE.UNSUCCESS"/></param>
+        /// <param name="kaisaibi">開催日</param>
+        /// <param name="houshiki">方式</param>
+        /// <param name="shikibetsu">式別</param>
+        /// <param name="kingaku">
+        /// 1 点あたりの購入金額(100 円以上 <see cref="MAX_TOTAL_AMOUNT_PER_SEND"/> 円以下、100 円単位)
+        /// </param>
+        /// <param name="kaime">
+        /// 買い目文字列。馬番は 1〜18(海外は 1〜24)。
+        /// <b>範囲外の馬番が含まれる場合は黙って無視せず失敗する</b>(指定より少ない点数で購入されるのを防ぐため)。
+        /// </param>
+        /// <param name="betData">構築された購入情報。合計購入金額は totalAmount に入る</param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint GetBetInstance(Kaisai place, byte raceNo, DateTime kaisaibi, Houshiki houshiki,
             Shikibetsu shikibetsu, uint kingaku, string kaime, out ST_BET_DATA betData)
         {
@@ -761,52 +1047,65 @@ namespace IpatHelperNet
                 houshiki = 0,
                 shikibetsu = 0,
                 kingaku = 0,
-                horseNo = new uint[3],
-                totalAmount = 0
+                horseNo = new uint[UMABAN_COLUMN_COUNT],
+                totalAmount = 0,
+                multi = 0
             };
 
-            return NativeMethods.GetBetInstance((byte)place, raceNo, (ushort)kaisaibi.Year, (byte)kaisaibi.Month, (byte)kaisaibi.Day, (byte)houshiki,
-                                                       (byte)shikibetsu, kingaku, Encoding.UTF8.GetBytes(kaime), ref betData);
+            return NativeMethods.GetBetInstance((ushort)place, raceNo, (ushort)kaisaibi.Year, (byte)kaisaibi.Month, (byte)kaisaibi.Day, (byte)houshiki,
+                                                       (byte)shikibetsu, kingaku, ToNullTerminatedUtf8(kaime), ref betData);
         }
 
         /// <summary>
-        /// 馬券購入用インスタンス取得(WIN5)
+        /// <para>WIN5 の買い目文字列から購入情報を構築する。<see cref="BetWin5"/> の前に必ず実行すること。</para>
+        /// <para><see cref="GetBetInstance"/> と同じく内部ロックを取得しない。</para>
         /// </summary>
-        /// <param name="kingaku"></param>
-        /// <param name="kaisaibi"></param>
-        /// <param name="kaime"></param>
-        /// <param name="objBetData"></param>
-        /// <returns></returns>
+        /// <param name="kingaku">
+        /// 1 点あたりの購入金額(100 円以上 <see cref="MAX_TOTAL_AMOUNT_PER_SEND"/> 円以下、100 円単位)
+        /// </param>
+        /// <param name="kaisaibi">開催日</param>
+        /// <param name="kaime">買い目文字列(5 レース分。馬番は 1〜18)</param>
+        /// <param name="objBetData">構築された購入情報</param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint GetBetInstanceWin5(uint kingaku, DateTime kaisaibi, string kaime, out ST_BET_DATA_WIN5 objBetData)
         {
             objBetData = new ST_BET_DATA_WIN5()
             {
                 youbi = 0,
                 kingaku = 0,
-                horseNo = new uint[5]
+                horseNo = new uint[WIN5_RACE_COUNT]
             };
 
-            return NativeMethods.GetBetInstanceWin5(kingaku, (ushort)kaisaibi.Year, (byte)kaisaibi.Month, (byte)kaisaibi.Day, Encoding.UTF8.GetBytes(kaime), ref objBetData);
+            return NativeMethods.GetBetInstanceWin5(kingaku, (ushort)kaisaibi.Year, (byte)kaisaibi.Month, (byte)kaisaibi.Day, ToNullTerminatedUtf8(kaime), ref objBetData);
         }
 
         /// <summary>
-        /// 馬券購入処理実行
+        /// <para>馬券を購入する。異なる開催場の買い目も一括で渡せる(中央・地方・海外を自動振り分け)。</para>
+        /// <para>1 回の送信上限(中央 255 件 / 地方 50 件)を超える場合は自動的に分割送信する。</para>
+        /// <para>購入前に残高と購入可能件数を確認し、自動入金が有効なら残高不足時に入金する。</para>
         /// </summary>
-        /// <param name="betDataList"></param>
-        /// <param name="waitMiliSeconds"></param>
-        /// <returns></returns>
-        public static uint Bet(List<ST_BET_DATA> betDataList, ushort waitMiliSeconds = 1000)
+        /// <param name="betDataList"><see cref="GetBetInstance"/> で構築した購入情報のリスト</param>
+        /// <param name="waitMiliSeconds">
+        /// <para><b>分割送信の間隔(ms)。タイムアウトではない。</b>間隔が短いと購入に失敗することがある。</para>
+        /// <para>DLL 側の既定値は <see cref="DEFAULT_BET_INTERVAL"/>(500ms)だが、本ラッパーは
+        /// より余裕を持たせた <see cref="DEFAULT_BET_INTERVAL_MANAGED"/>(1000ms)を既定で渡す。</para>
+        /// </param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
+        public static uint Bet(List<ST_BET_DATA> betDataList, ushort waitMiliSeconds = DEFAULT_BET_INTERVAL_MANAGED)
         {
             return NativeMethods.Bet(betDataList.ToArray(), (ushort)betDataList.Count, waitMiliSeconds);
         }
 
         /// <summary>
-        /// 馬券購入処理実行(WIN5)
+        /// <para>WIN5 馬券を購入する(<b>中央競馬のみ</b>)。</para>
+        /// <para>1 回の購入上限(50 組み合わせ)を超える場合は自動的に分割送信する。</para>
         /// </summary>
-        /// <param name="betData"></param>
-        /// <param name="waitMiliSeconds"></param>
-        /// <returns></returns>
-        public static uint BetWin5(ST_BET_DATA_WIN5 betData, ushort waitMiliSeconds = 1000)
+        /// <param name="betData"><see cref="GetBetInstanceWin5"/> で構築した購入情報</param>
+        /// <param name="waitMiliSeconds">
+        /// 分割送信の間隔(ms)。<see cref="Bet"/> と同じくタイムアウトではない。
+        /// </param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
+        public static uint BetWin5(ST_BET_DATA_WIN5 betData, ushort waitMiliSeconds = DEFAULT_BET_INTERVAL_MANAGED)
         {
             return NativeMethods.BetWin5(betData, waitMiliSeconds);
         }
@@ -830,41 +1129,61 @@ namespace IpatHelperNet
         /// </summary>
         /// <param name="mode">購入方式</param>
         /// <param name="axisUmaban">
-        /// セレクト時の軸馬番。5 レース分をカンマ区切りで指定する (例 "3,0,7,0,12")。
-        /// 0 のレースはサーバが選ぶ。<b>すべて 0 は指定できない</b>
-        /// (ランダムと同じ電文になり、サーバに拒否される)。ランダム時は無視される。
+        /// <para>セレクト時の軸馬番。5 レース分をカンマ区切りで指定する (例 "3,0,7,0,0")。
+        /// 0 のレースはサーバが選ぶ。ランダム時は無視される (null 可)。</para>
+        /// <para><b>0(おまかせ)にできるのは 1〜4 レース。</b>次の 2 つは送信せずに
+        /// <see cref="RETURN_VALUE.UNSUCCESS"/> を返す。</para>
+        /// <para>・すべて 0 ("0,0,0,0,0") — ランダムと同じ指定になる。
+        /// <see cref="Win5AutoMode.Random"/> を使うこと。</para>
+        /// <para>・0 が 1 つも無い ("3,7,1,5,2") — 買い目が 1 通りに決まり、依頼した点数を
+        /// サーバが生成できない。<see cref="BetWin5"/> で直接指定すること。</para>
         /// </param>
-        /// <param name="betCount">生成させる点数 (1〜50)</param>
+        /// <param name="betCount">生成させる点数 (1〜<see cref="MAX_WIN5_AUTO_BET_COUNT"/>)</param>
         /// <param name="kingaku">1 点あたりの購入金額 (円。100 円単位)</param>
         /// <param name="kaisaibi">開催日</param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint BetWin5Auto(Win5AutoMode mode, string axisUmaban, uint betCount, uint kingaku, DateTime kaisaibi)
         {
             return NativeMethods.BetWin5Auto(
                 (byte)mode,
-                axisUmaban == null ? null : Encoding.UTF8.GetBytes(axisUmaban),
+                axisUmaban == null ? null : ToNullTerminatedUtf8(axisUmaban),
                 (ushort)betCount, kingaku,
                 (ushort)kaisaibi.Year, (byte)kaisaibi.Month, (byte)kaisaibi.Day);
         }
 
         /// <summary>
-        /// 自動入金フラグ設定
+        /// <para>馬券購入時に残高不足が発生した場合、自動で入金してから購入に移る機能を設定する。</para>
+        /// <para>入金後の残高が購入金額に満たない場合は入金を行わず
+        /// <see cref="RETURN_VALUE.UNSUCCESS"/> を返す。</para>
         /// </summary>
-        /// <param name="enable"></param>
-        /// <param name="usDepositValue"></param>
-        /// <returns></returns>
-        public static uint SetAutoDepositFlag(bool enable, uint depositValue = 1000, ushort confirmTimeout = 10000)
+        /// <param name="enable">true: 有効 / false: 無効</param>
+        /// <param name="depositValue">
+        /// 自動入金額(円・100 円単位)。enable が false の場合は検証しない。
+        /// </param>
+        /// <param name="confirmTimeout">
+        /// 残高反映の確認タイムアウト(ms)。<see cref="Deposit"/> /
+        /// <see cref="Withdraw"/> の反映待機にも使われる。
+        /// </param>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
+        public static uint SetAutoDepositFlag(bool enable, uint depositValue = DEPOSIT_DEFAULT_VALUE, ushort confirmTimeout = DEFAULT_CONFIRM_TIMEOUT)
         {
             return NativeMethods.SetAutoDepositFlag(enable, depositValue, confirmTimeout);
         }
 
         /// <summary>
-        /// オッズ取得処理実行(中央競馬・地方競馬に対応)
+        /// <para>指定レース・式別のオッズを取得する(<b>中央競馬・地方競馬・海外競馬</b>に対応)。</para>
+        /// <para>単勝・複勝は基本オッズ、枠連〜三連単は全通りのオッズ表を取得する。</para>
+        /// <para>海外開催は<b>中央競馬へのログインが必要</b>で、枠が無いため
+        /// <see cref="Shikibetsu.BRACKETQUINELLA"/> を指定すると
+        /// <see cref="RETURN_VALUE.UNSUCCESS"/> になる。</para>
+        /// <para><see cref="Shikibetsu.WINPLACE"/>(応援馬券)はオッズの式別ではないため指定できない。</para>
+        /// <para>ネイティブ側のメモリ解放はラッパー内部で行う。</para>
         /// </summary>
         /// <param name="place">開催場</param>
-        /// <param name="raceNo">レース番号</param>
+        /// <param name="raceNo">レース番号(1〜12)</param>
         /// <param name="shikibetsu">式別</param>
         /// <param name="oddsData">取得したオッズ情報</param>
-        /// <returns></returns>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint GetOdds(Kaisai place, byte raceNo, Shikibetsu shikibetsu, out ST_ODDS_DATA oddsData)
         {
             ST_ODDS_DATA_INTERNAL tempOddsData = new()
@@ -912,12 +1231,17 @@ namespace IpatHelperNet
         }
 
         /// <summary>
-        /// 出馬表取得処理実行(中央競馬・地方競馬に対応)
+        /// <para>指定レースの出馬表を取得する(<b>中央競馬・地方競馬・海外競馬</b>に対応)。</para>
+        /// <para>海外開催は<b>中央競馬へのログインが必要</b>で、I-PAT が返す項目が国内より少ない。
+        /// 取得できるのは umaban / horseName / winPopular / 単勝・複勝オッズ、および
+        /// raceName / deadline / raceStatus のみで、枠番・性齢・馬体重・騎手・斤量・調教師は
+        /// 0 または空文字になる。</para>
+        /// <para>ネイティブ側のメモリ解放はラッパー内部で行う。</para>
         /// </summary>
         /// <param name="place">開催場</param>
-        /// <param name="raceNo">レース番号</param>
+        /// <param name="raceNo">レース番号(1〜12)</param>
         /// <param name="raceCard">取得した出馬表情報</param>
-        /// <returns></returns>
+        /// <returns><see cref="RETURN_VALUE"/> のビットフラグ</returns>
         public static uint GetRaceCard(Kaisai place, byte raceNo, out ST_RACECARD_DATA raceCard)
         {
             ST_RACECARD_DATA_INTERNAL tempRaceCardData = new()
@@ -929,9 +1253,7 @@ namespace IpatHelperNet
                 pobjEntry = IntPtr.Zero,
                 szRaceName = new byte[128],
                 szDeadline = new byte[8],
-                ucRaceStatus = (byte)RACE_STATUS.UNKNOWN,
-                szGrade = new byte[16],
-                usRaceNumber = 0
+                ucRaceStatus = (byte)RACE_STATUS.UNKNOWN
             };
 
             uint returnValue = NativeMethods.GetRaceCard((ushort)place, raceNo, ref tempRaceCardData);
@@ -945,9 +1267,7 @@ namespace IpatHelperNet
                 entries = Array.Empty<ST_ENTRY_DETAIL>(),
                 raceName = DecodeUtf8(tempRaceCardData.szRaceName),
                 deadline = DecodeUtf8(tempRaceCardData.szDeadline),
-                raceStatus = (RACE_STATUS)tempRaceCardData.ucRaceStatus,
-                grade = DecodeUtf8(tempRaceCardData.szGrade),
-                raceNumber = tempRaceCardData.usRaceNumber
+                raceStatus = (RACE_STATUS)tempRaceCardData.ucRaceStatus
             };
 
             // 取得失敗、または明細が無い場合はここで解放して戻る
@@ -1051,6 +1371,23 @@ namespace IpatHelperNet
             NativeMethods.ReleaseNoticeData(ref tempNoticeData);
 
             return returnValue;
+        }
+
+        /// <summary>
+        /// <para>文字列を UTF-8 の null 終端バイト列へ変換する。</para>
+        /// <para>DLL 側は <c>const char[]</c> を null 終端として読むが、
+        /// byte 配列のマーシャリングは終端を付けないため、ここで明示的に付ける。
+        /// (付けないと DLL が確保領域の外まで読み進める。)</para>
+        /// </summary>
+        private static byte[] ToNullTerminatedUtf8(string value)
+        {
+            value ??= string.Empty;
+
+            int byteCount = Encoding.UTF8.GetByteCount(value);
+            byte[] buffer = new byte[byteCount + 1];
+            Encoding.UTF8.GetBytes(value, 0, value.Length, buffer, 0);
+            buffer[byteCount] = 0;
+            return buffer;
         }
 
         /// <summary>
