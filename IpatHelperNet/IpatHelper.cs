@@ -563,7 +563,8 @@ namespace IpatHelperNet
 
             CHURCHILLDOWNS,
             ABDULAZIZ,
-            ASCOT
+            ASCOT,
+            BELMONTPARK
         }
 
         /// <summary>
